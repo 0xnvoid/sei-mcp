@@ -1,1 +1,1 @@
-curl -fsSL https://raw.githubusercontent.com/butterpaneermasala/sei-mcp/main/scripts/install.sh | GITHUB_REPO=butterpaneermasala/sei-mcp bash
+curl -fsSL https://raw.githubusercontent.com/0xnvoid/sei-mcp/main/scripts/install.sh | GITHUB_REPO=butterpaneermasala/sei-mcp bash
