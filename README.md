@@ -18,25 +18,85 @@ A Model Context Protocol (MCP) server providing tools to interact with Sei EVM a
 ```
 
 ## Features
+---
+### Wallets 👛
+This category includes tools for creating, importing, and securely managing user wallets.
 
-- Wallets
-  - create/import EVM wallets
-  - secure storage with master password
-- Balances & Faucet
-  - native balance, faucet (testnet)
-- Transfers
-  - EVM value transfer, SEI native transfer, NFT transfer placeholder
-- Contracts
-  - get contract info/code/txs (SeiStream)
-  - read/write via ABI, is_contract
-- Tokens
-  - ERC20: info, balance, allowance, transfer, approve
-  - ERC721: tokenURI, ownerOf, balanceOf
-  - ERC1155: uri, balanceOf, safeTransferFrom
-- Chain & Tx
-  - chain info, tx info, tx history
-- Utilities
-  - Discord webhook posting (optional)
+* **`create_wallet`**: Generates a new EVM-compatible wallet, providing a new address, private key, and mnemonic phrase.
+* **`import_wallet`**: Imports an existing EVM wallet using a private key, returning the wallet's address and public key.
+* **`register_wallet`**: Encrypts a private key with a master password and saves it locally under a user-provided name for secure storage.
+* **`list_wallets`**: Lists the names of all wallets that have been securely registered. Requires the master password to view.
+* **`transfer_from_wallet`**: Executes a token transfer from a securely stored wallet. It requires the wallet's name and the master password to decrypt the private key for the transaction.
+
+---
+
+### Balances & Faucet 💧
+These tools are for checking account balances and acquiring testnet tokens.
+
+* **`get_balance`**: Fetches the native coin balance (e.g., SEI) for a given address on a specified chain.
+* **`request_faucet`**: Sends a request to a configured faucet to receive testnet tokens for a specific address.
+
+---
+
+### Transfers 💸
+This group of functions handles the movement of assets, from native coins to various token types.
+
+* **`transfer_evm`**: Sends a specified amount of the native EVM coin from one address to another using a provided private key.
+* **`transfer_sei`**: Executes a native Cosmos-based bank transfer for moving `usei` between Sei addresses.
+* **`transfer_nft_evm`**: Transfers a specific ERC-721 token from a sender to a receiver.
+* **`transfer_token`**: Transfers a specified amount of an ERC20 token to a recipient address.
+* **`transfer_erc1155`**: Transfers a specified amount of an ERC1155 token from one address to another.
+
+---
+
+### Contracts 📜
+These tools provide functionalities for interacting with and inspecting smart contracts.
+
+* **`get_contract`**: Retrieves general on-chain details about a smart contract from the SeiStream indexing service.
+* **`get_contract_code`**: Fetches the deployed bytecode for a smart contract at a given address.
+* **`get_contract_transactions`**: Obtains a history of transactions associated with a specific smart contract from SeiStream.
+* **`is_contract`**: Checks if a given address has smart contract code deployed to it, differentiating it from a standard wallet address.
+* **`read_contract`**: Performs a read-only call to a smart contract function without creating a transaction, using the contract's ABI to format the request.
+* **`write_contract`**: Creates and sends a signed transaction to execute a state-changing function on a smart contract, using its ABI.
+
+---
+
+### Tokens 🪙
+This section covers a wide range of tools for interacting with ERC20, ERC721, and ERC1155 token standards.
+
+#### ERC20
+* **`get_token_info`**: Fetches standard metadata for an ERC20 token, such as its name, symbol, and decimal precision.
+* **`get_token_balance`**: Checks the balance of a specific ERC20 token held by a wallet address.
+* **`get_token_allowance`**: Checks the amount of an ERC20 token that a "spender" address is authorized to withdraw from an owner's address.
+* **`approve_token_spending`**: Grants a "spender" address permission to transfer a specified amount of an ERC20 token on the owner's behalf.
+
+#### ERC721
+* **`get_nft_info`**: Retrieves the metadata URI (`tokenURI`) for a specific ERC-721 non-fungible token (NFT).
+* **`check_nft_ownership`**: Verifies the current owner of a specific ERC-721 token by its token ID.
+* **`get_nft_balance`**: Counts the total number of ERC-721 tokens from a specific contract that a wallet address owns.
+* **`get_nft_metadata`**: Fetches metadata for all ERC-721 items within a given contract from the SeiStream service.
+
+#### ERC1155
+* **`get_erc1155_token_uri`**: Gets the metadata URI for a specific ERC1155 token ID.
+* **`get_erc1155_balance`**: Checks an address's balance of a specific token ID within an ERC1155 contract.
+
+---
+
+### Chain & Tx ⛓️
+These tools offer insights into the blockchain's status and transaction history.
+
+* **`get_chain_info`**: Retrieves general information about the blockchain from SeiStream, including the network name and latest block height.
+* **`get_transaction_info`**: Fetches detailed information about a single transaction using its unique hash from SeiStream.
+* **`get_transaction_history`**: Provides a list of past transactions for a given wallet address from SeiStream.
+* **`search_events`**: Queries the blockchain for specific log events emitted by smart contracts based on filters like address and topic.
+
+---
+
+### Utilities 🛠️
+This category contains miscellaneous helper tools.
+
+* **`discord_post_message`**: Sends a message to a pre-configured Discord channel via a webhook.
+* **`redirect_to_seidocs`**: Provides the URL for the official Sei documentation (`https://docs.sei.io/`).
 
 ## Install
 
