@@ -208,7 +208,6 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                     }
                 }
             }
-            let payload = json!({ "url": url });
             let summary = "Open Sei documentation".to_string();
             // Some MCP clients don't support a dedicated 'link' content item; keep it text-only
             Response::success(
@@ -1024,6 +1023,222 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
             .await;
             res.unwrap_or_else(|err_resp| err_resp)
         }
+        // --- Token services: ERC20 / ERC721 / ERC1155 ---
+        // Aliases: accept both snake_case and hyphen-case used upstream
+        "get_token_info" | "get-token-info" => {
+            let res: Result<Response, Response> = (async {
+                let mut chain_id = args
+                    .get("chain_id")
+                    .or_else(|| args.get("network"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| "sei-evm-testnet".to_string());
+                chain_id = normalize_chain_id(&chain_id);
+                let token = utils::get_required_arg::<String>(args, "tokenAddress", req_id)
+                    .or_else(|_| utils::get_required_arg::<String>(args, "token_address", req_id))?;
+                let rpc_url = state.config.chain_rpc_urls.get(&chain_id).ok_or_else(|| Response::error(req_id.clone(), error_codes::INVALID_PARAMS, format!("RPC URL not configured for chain_id '{}'", chain_id)))?;
+                let client = Client::new();
+                let v = crate::blockchain::services::token::erc20_info(&client, rpc_url, &token).await
+                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
+                Ok(Response::success(req_id.clone(), make_texty_result(format!("Token info {} on {}", token, chain_id), v)))
+            }).await; match res { Ok(r) => r, Err(e) => e }
+        }
+        "get_token_balance" | "get-token-balance" => {
+            let res: Result<Response, Response> = (async {
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
+                chain_id = normalize_chain_id(&chain_id);
+                let token = utils::get_required_arg::<String>(args, "tokenAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_address", req_id))?;
+                let owner = utils::get_required_arg::<String>(args, "ownerAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "owner_address", req_id))?;
+                let rpc_url = state.config.chain_rpc_urls.get(&chain_id).ok_or_else(|| Response::error(req_id.clone(), error_codes::INVALID_PARAMS, format!("RPC URL not configured for chain_id '{}'", chain_id)))?;
+                let client = Client::new();
+                let v = crate::blockchain::services::token::erc20_balance_of(&client, rpc_url, &token, &owner).await
+                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
+                Ok(Response::success(req_id.clone(), make_texty_result(format!("ERC20 balance of {}", owner), v)))
+            }).await; match res { Ok(r) => r, Err(e) => e }
+        }
+        "get_token_allowance" | "get-token-allowance" => {
+            let res: Result<Response, Response> = (async {
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
+                chain_id = normalize_chain_id(&chain_id);
+                let token = utils::get_required_arg::<String>(args, "tokenAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_address", req_id))?;
+                let owner = utils::get_required_arg::<String>(args, "ownerAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "owner_address", req_id))?;
+                let spender = utils::get_required_arg::<String>(args, "spenderAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "spender_address", req_id))?;
+                let rpc_url = state.config.chain_rpc_urls.get(&chain_id).ok_or_else(|| Response::error(req_id.clone(), error_codes::INVALID_PARAMS, format!("RPC URL not configured for chain_id '{}'", chain_id)))?;
+                let client = Client::new();
+                let v = crate::blockchain::services::token::erc20_allowance(&client, rpc_url, &token, &owner, &spender).await
+                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
+                Ok(Response::success(req_id.clone(), make_texty_result(format!("ERC20 allowance of {} -> {}", owner, spender), v)))
+            }).await; match res { Ok(r) => r, Err(e) => e }
+        }
+        "transfer_token" | "transfer-token" => {
+            let res: Result<Response, Response> = (async {
+                let private_key = utils::get_required_arg::<String>(args, "private_key", req_id)?;
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
+                chain_id = normalize_chain_id(&chain_id);
+                let token = utils::get_required_arg::<String>(args, "tokenAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_address", req_id))?;
+                let to = utils::get_required_arg::<String>(args, "toAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "to_address", req_id))?;
+                let amount = utils::get_required_arg::<String>(args, "amount", req_id).or_else(|_| utils::get_required_arg::<String>(args, "amount_wei", req_id))?;
+                let mut tx = crate::blockchain::services::token::erc20_transfer_tx(&token, &to, &amount)
+                    .map_err(|e| Response::error(req_id.clone(), error_codes::INVALID_PARAMS, e.to_string()))?;
+                if let Some(g) = args.get("gas_limit").and_then(|v| v.as_str()) { tx = tx.gas(U256::from_dec_str(g).unwrap_or_else(|_| U256::from(0))); }
+                if let Some(gp) = args.get("gas_price").and_then(|v| v.as_str()) { tx = tx.gas_price(U256::from_dec_str(gp).unwrap_or_else(|_| U256::from(0))); }
+                let resp = state.sei_client.send_transaction(&chain_id, &private_key, tx, &state.nonce_manager).await
+                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
+                Ok(Response::success(req_id.clone(), make_texty_result("ERC20 transfer sent".into(), json!(resp))))
+            }).await; match res { Ok(r) => r, Err(e) => e }
+        }
+        "approve_token_spending" | "approve-token-spending" => {
+            let res: Result<Response, Response> = (async {
+                let private_key = utils::get_required_arg::<String>(args, "private_key", req_id)?;
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
+                chain_id = normalize_chain_id(&chain_id);
+                let token = utils::get_required_arg::<String>(args, "tokenAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_address", req_id))?;
+                let spender = utils::get_required_arg::<String>(args, "spenderAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "spender_address", req_id))?;
+                let amount = utils::get_required_arg::<String>(args, "amount", req_id).or_else(|_| utils::get_required_arg::<String>(args, "amount_wei", req_id))?;
+                let mut tx = crate::blockchain::services::token::erc20_approve_tx(&token, &spender, &amount)
+                    .map_err(|e| Response::error(req_id.clone(), error_codes::INVALID_PARAMS, e.to_string()))?;
+                if let Some(g) = args.get("gas_limit").and_then(|v| v.as_str()) { tx = tx.gas(U256::from_dec_str(g).unwrap_or_else(|_| U256::from(0))); }
+                if let Some(gp) = args.get("gas_price").and_then(|v| v.as_str()) { tx = tx.gas_price(U256::from_dec_str(gp).unwrap_or_else(|_| U256::from(0))); }
+                let resp = state.sei_client.send_transaction(&chain_id, &private_key, tx, &state.nonce_manager).await
+                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
+                Ok(Response::success(req_id.clone(), make_texty_result("ERC20 approve sent".into(), json!(resp))))
+            }).await; match res { Ok(r) => r, Err(e) => e }
+        }
+        "get_nft_info" | "get-nft-info" => {
+            let res: Result<Response, Response> = (async {
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
+                chain_id = normalize_chain_id(&chain_id);
+                let token = utils::get_required_arg::<String>(args, "tokenAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_address", req_id))?;
+                let token_id = utils::get_required_arg::<String>(args, "tokenId", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_id", req_id))?;
+                let rpc_url = state.config.chain_rpc_urls.get(&chain_id).ok_or_else(|| Response::error(req_id.clone(), error_codes::INVALID_PARAMS, format!("RPC URL not configured for chain_id '{}'", chain_id)))?;
+                let client = Client::new();
+                let uri = crate::blockchain::services::token::erc721_token_uri(&client, rpc_url, &token, &token_id).await
+                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
+                Ok(Response::success(req_id.clone(), make_texty_result("ERC721 tokenURI".into(), uri)))
+            }).await; match res { Ok(r) => r, Err(e) => e }
+        }
+        "check_nft_ownership" | "check-nft-ownership" => {
+            let res: Result<Response, Response> = (async {
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
+                chain_id = normalize_chain_id(&chain_id);
+                let token = utils::get_required_arg::<String>(args, "tokenAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_address", req_id))?;
+                let token_id = utils::get_required_arg::<String>(args, "tokenId", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_id", req_id))?;
+                let owner = utils::get_required_arg::<String>(args, "ownerAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "owner_address", req_id))?;
+                let rpc_url = state.config.chain_rpc_urls.get(&chain_id).ok_or_else(|| Response::error(req_id.clone(), error_codes::INVALID_PARAMS, format!("RPC URL not configured for chain_id '{}'", chain_id)))?;
+                let client = Client::new();
+                let res_owner = crate::blockchain::services::token::erc721_owner_of(&client, rpc_url, &token, &token_id).await
+                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
+                Ok(Response::success(req_id.clone(), json!({
+                    "data": res_owner,
+                    "content": [{"type":"text","text": format!("ownerOf == {}? (raw hex encoded)", owner)}]
+                })))
+            }).await; match res { Ok(r) => r, Err(e) => e }
+        }
+        "get_nft_balance" | "get-nft-balance" => {
+            let res: Result<Response, Response> = (async {
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
+                chain_id = normalize_chain_id(&chain_id);
+                let token = utils::get_required_arg::<String>(args, "tokenAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_address", req_id))?;
+                let owner = utils::get_required_arg::<String>(args, "ownerAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "owner_address", req_id))?;
+                let rpc_url = state.config.chain_rpc_urls.get(&chain_id).ok_or_else(|| Response::error(req_id.clone(), error_codes::INVALID_PARAMS, format!("RPC URL not configured for chain_id '{}'", chain_id)))?;
+                let client = Client::new();
+                let v = crate::blockchain::services::token::erc721_balance_of(&client, rpc_url, &token, &owner).await
+                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
+                Ok(Response::success(req_id.clone(), make_texty_result("ERC721 balanceOf".into(), v)))
+            }).await; match res { Ok(r) => r, Err(e) => e }
+        }
+        "get_erc1155_token_uri" | "get-erc1155-token-uri" => {
+            let res: Result<Response, Response> = (async {
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
+                chain_id = normalize_chain_id(&chain_id);
+                let token = utils::get_required_arg::<String>(args, "tokenAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_address", req_id))?;
+                let token_id = utils::get_required_arg::<String>(args, "tokenId", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_id", req_id))?;
+                let rpc_url = state.config.chain_rpc_urls.get(&chain_id).ok_or_else(|| Response::error(req_id.clone(), error_codes::INVALID_PARAMS, format!("RPC URL not configured for chain_id '{}'", chain_id)))?;
+                let client = Client::new();
+                let v = crate::blockchain::services::token::erc1155_uri(&client, rpc_url, &token, &token_id).await
+                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
+                Ok(Response::success(req_id.clone(), make_texty_result("ERC1155 uri".into(), v)))
+            }).await; match res { Ok(r) => r, Err(e) => e }
+        }
+        "get_erc1155_balance" | "get-erc1155-balance" => {
+            let res: Result<Response, Response> = (async {
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
+                chain_id = normalize_chain_id(&chain_id);
+                let token = utils::get_required_arg::<String>(args, "tokenAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_address", req_id))?;
+                let owner = utils::get_required_arg::<String>(args, "ownerAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "owner_address", req_id))?;
+                let token_id = utils::get_required_arg::<String>(args, "tokenId", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_id", req_id))?;
+                let rpc_url = state.config.chain_rpc_urls.get(&chain_id).ok_or_else(|| Response::error(req_id.clone(), error_codes::INVALID_PARAMS, format!("RPC URL not configured for chain_id '{}'", chain_id)))?;
+                let client = Client::new();
+                let v = crate::blockchain::services::token::erc1155_balance_of(&client, rpc_url, &token, &owner, &token_id).await
+                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
+                Ok(Response::success(req_id.clone(), make_texty_result("ERC1155 balanceOf".into(), v)))
+            }).await; match res { Ok(r) => r, Err(e) => e }
+        }
+        "transfer_erc1155" | "transfer-erc1155" => {
+            let res: Result<Response, Response> = (async {
+                let private_key = utils::get_required_arg::<String>(args, "private_key", req_id)?;
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
+                chain_id = normalize_chain_id(&chain_id);
+                let token = utils::get_required_arg::<String>(args, "tokenAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_address", req_id))?;
+                let from = utils::get_required_arg::<String>(args, "fromAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "from_address", req_id))?;
+                let to = utils::get_required_arg::<String>(args, "toAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "to_address", req_id))?;
+                let token_id = utils::get_required_arg::<String>(args, "tokenId", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_id", req_id))?;
+                let amount = utils::get_required_arg::<String>(args, "amount", req_id)?;
+                let mut tx = crate::blockchain::services::token::erc1155_safe_transfer_from_tx(&token, &from, &to, &token_id, &amount)
+                    .map_err(|e| Response::error(req_id.clone(), error_codes::INVALID_PARAMS, e.to_string()))?;
+                if let Some(g) = args.get("gas_limit").and_then(|v| v.as_str()) { tx = tx.gas(U256::from_dec_str(g).unwrap_or_else(|_| U256::from(0))); }
+                if let Some(gp) = args.get("gas_price").and_then(|v| v.as_str()) { tx = tx.gas_price(U256::from_dec_str(gp).unwrap_or_else(|_| U256::from(0))); }
+                let resp = state.sei_client.send_transaction(&chain_id, &private_key, tx, &state.nonce_manager).await
+                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
+                Ok(Response::success(req_id.clone(), make_texty_result("ERC1155 transfer sent".into(), json!(resp))))
+            }).await; match res { Ok(r) => r, Err(e) => e }
+        }
+        // --- Generic contract utils ---
+        "is_contract" | "is-contract" => {
+            let res: Result<Response, Response> = (async {
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
+                chain_id = normalize_chain_id(&chain_id);
+                let address = utils::get_required_arg::<String>(args, "address", req_id)?;
+                let rpc_url = state.config.chain_rpc_urls.get(&chain_id).ok_or_else(|| Response::error(req_id.clone(), error_codes::INVALID_PARAMS, format!("RPC URL not configured for chain_id '{}'", chain_id)))?;
+                let client = Client::new();
+                let ok = crate::blockchain::services::token::is_contract(&client, rpc_url, &address).await
+                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
+                Ok(Response::success(req_id.clone(), json!({"is_contract": ok, "content": [{"type":"text","text": format!("{} is {}a contract", address, if ok {""} else {"not "})}]})))
+            }).await; match res { Ok(r) => r, Err(e) => e }
+        }
+        "read_contract" | "read-contract" => {
+            let res: Result<Response, Response> = (async {
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
+                chain_id = normalize_chain_id(&chain_id);
+                let contract = utils::get_required_arg::<String>(args, "contractAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "contract_address", req_id))?;
+                let abi = utils::get_required_arg::<String>(args, "abi", req_id)?;
+                let function = utils::get_required_arg::<String>(args, "functionName", req_id).or_else(|_| utils::get_required_arg::<String>(args, "function_name", req_id))?;
+                let rpc_url = state.config.chain_rpc_urls.get(&chain_id).ok_or_else(|| Response::error(req_id.clone(), error_codes::INVALID_PARAMS, format!("RPC URL not configured for chain_id '{}'", chain_id)))?;
+                let args_vec = args.get("args").and_then(|v| v.as_array()).cloned();
+                let client = Client::new();
+                let v = crate::blockchain::services::token::read_contract_via_abi(&client, rpc_url, &contract, &abi, &function, args_vec).await
+                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
+                Ok(Response::success(req_id.clone(), make_texty_result(format!("Read {}.{}", contract, function), v)))
+            }).await; match res { Ok(r) => r, Err(e) => e }
+        }
+        "write_contract" | "write-contract" => {
+            let res: Result<Response, Response> = (async {
+                let private_key = utils::get_required_arg::<String>(args, "private_key", req_id)?;
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
+                chain_id = normalize_chain_id(&chain_id);
+                let contract = utils::get_required_arg::<String>(args, "contractAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "contract_address", req_id))?;
+                let abi = utils::get_required_arg::<String>(args, "abi", req_id)?;
+                let function = utils::get_required_arg::<String>(args, "functionName", req_id).or_else(|_| utils::get_required_arg::<String>(args, "function_name", req_id))?;
+                let args_vec = args.get("args").and_then(|v| v.as_array()).cloned();
+                let mut tx = crate::blockchain::services::token::write_contract_tx(&contract, &abi, &function, args_vec)
+                    .map_err(|e| Response::error(req_id.clone(), error_codes::INVALID_PARAMS, e.to_string()))?;
+                if let Some(g) = args.get("gas_limit").and_then(|v| v.as_str()) { tx = tx.gas(U256::from_dec_str(g).unwrap_or_else(|_| U256::from(0))); }
+                if let Some(gp) = args.get("gas_price").and_then(|v| v.as_str()) { tx = tx.gas_price(U256::from_dec_str(gp).unwrap_or_else(|_| U256::from(0))); }
+                let resp = state.sei_client.send_transaction(&chain_id, &private_key, tx, &state.nonce_manager).await
+                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
+                Ok(Response::success(req_id.clone(), make_texty_result(format!("write {}.{} sent", contract, function), json!(resp))))
+            }).await; match res { Ok(r) => r, Err(e) => e }
+        }
         _ => Response::error(
             req.id,
             error_codes::METHOD_NOT_FOUND,
@@ -1252,6 +1467,80 @@ fn handle_tools_list(req: &Request) -> Response {
                 },
                 "required": ["address"]
             }
+        },
+        // --- Added: Token services (ERC20) ---
+        {
+            "name": "get_token_info",
+            "description": "Get ERC20 token metadata.",
+            "inputSchema": {"type": "object", "properties": {"tokenAddress": {"type": "string"}, "chain_id": {"type": "string"}, "network": {"type": "string"}}, "required": ["tokenAddress"], "additionalProperties": false}
+        },
+        {
+            "name": "get_token_balance",
+            "description": "Check ERC20 token balance.",
+            "inputSchema": {"type": "object", "properties": {"tokenAddress": {"type": "string"}, "ownerAddress": {"type": "string"}, "chain_id": {"type": "string"}, "network": {"type": "string"}}, "required": ["tokenAddress", "ownerAddress"], "additionalProperties": false}
+        },
+        {
+            "name": "get_token_allowance",
+            "description": "Check ERC20 allowance between owner and spender.",
+            "inputSchema": {"type": "object", "properties": {"tokenAddress": {"type": "string"}, "ownerAddress": {"type": "string"}, "spenderAddress": {"type": "string"}, "chain_id": {"type": "string"}, "network": {"type": "string"}}, "required": ["tokenAddress", "ownerAddress", "spenderAddress"], "additionalProperties": false}
+        },
+        {
+            "name": "transfer_token",
+            "description": "Transfer ERC20 tokens.",
+            "inputSchema": {"type": "object", "properties": {"private_key": {"type": "string"}, "tokenAddress": {"type": "string"}, "toAddress": {"type": "string"}, "amount": {"type": "string"}, "chain_id": {"type": "string"}, "network": {"type": "string"}, "gas_limit": {"type": "string"}, "gas_price": {"type": "string"}}, "required": ["private_key", "tokenAddress", "toAddress", "amount"]}
+        },
+        {
+            "name": "approve_token_spending",
+            "description": "Approve ERC20 allowances.",
+            "inputSchema": {"type": "object", "properties": {"private_key": {"type": "string"}, "tokenAddress": {"type": "string"}, "spenderAddress": {"type": "string"}, "amount": {"type": "string"}, "chain_id": {"type": "string"}, "network": {"type": "string"}, "gas_limit": {"type": "string"}, "gas_price": {"type": "string"}}, "required": ["private_key", "tokenAddress", "spenderAddress", "amount"]}
+        },
+        // --- Added: ERC721 ---
+        {
+            "name": "get_nft_info",
+            "description": "Get ERC721 token metadata (tokenURI).",
+            "inputSchema": {"type": "object", "properties": {"tokenAddress": {"type": "string"}, "tokenId": {"type": "string"}, "chain_id": {"type": "string"}, "network": {"type": "string"}}, "required": ["tokenAddress", "tokenId"]}
+        },
+        {
+            "name": "check_nft_ownership",
+            "description": "Verify ERC721 NFT ownership (ownerOf).",
+            "inputSchema": {"type": "object", "properties": {"tokenAddress": {"type": "string"}, "tokenId": {"type": "string"}, "ownerAddress": {"type": "string"}, "chain_id": {"type": "string"}, "network": {"type": "string"}}, "required": ["tokenAddress", "tokenId", "ownerAddress"]}
+        },
+        {
+            "name": "get_nft_balance",
+            "description": "Count ERC721 NFTs owned (balanceOf).",
+            "inputSchema": {"type": "object", "properties": {"tokenAddress": {"type": "string"}, "ownerAddress": {"type": "string"}, "chain_id": {"type": "string"}, "network": {"type": "string"}}, "required": ["tokenAddress", "ownerAddress"]}
+        },
+        // --- Added: ERC1155 ---
+        {
+            "name": "get_erc1155_token_uri",
+            "description": "Get ERC1155 token URI.",
+            "inputSchema": {"type": "object", "properties": {"tokenAddress": {"type": "string"}, "tokenId": {"type": "string"}, "chain_id": {"type": "string"}, "network": {"type": "string"}}, "required": ["tokenAddress", "tokenId"]}
+        },
+        {
+            "name": "get_erc1155_balance",
+            "description": "Check ERC1155 token balance.",
+            "inputSchema": {"type": "object", "properties": {"tokenAddress": {"type": "string"}, "tokenId": {"type": "string"}, "ownerAddress": {"type": "string"}, "chain_id": {"type": "string"}, "network": {"type": "string"}}, "required": ["tokenAddress", "tokenId", "ownerAddress"]}
+        },
+        {
+            "name": "transfer_erc1155",
+            "description": "Transfer ERC1155 tokens (safeTransferFrom).",
+            "inputSchema": {"type": "object", "properties": {"private_key": {"type": "string"}, "tokenAddress": {"type": "string"}, "fromAddress": {"type": "string"}, "toAddress": {"type": "string"}, "tokenId": {"type": "string"}, "amount": {"type": "string"}, "chain_id": {"type": "string"}, "network": {"type": "string"}, "gas_limit": {"type": "string"}, "gas_price": {"type": "string"}}, "required": ["private_key", "tokenAddress", "fromAddress", "toAddress", "tokenId", "amount"]}
+        },
+        // --- Added: contract utils ---
+        {
+            "name": "is_contract",
+            "description": "Check if an address has contract code.",
+            "inputSchema": {"type": "object", "properties": {"address": {"type": "string"}, "chain_id": {"type": "string"}, "network": {"type": "string"}}, "required": ["address"]}
+        },
+        {
+            "name": "read_contract",
+            "description": "Read a contract function via ABI (eth_call).",
+            "inputSchema": {"type": "object", "properties": {"contractAddress": {"type": "string"}, "abi": {"type": "string"}, "functionName": {"type": "string"}, "args": {"type": "array"}, "chain_id": {"type": "string"}, "network": {"type": "string"}}, "required": ["contractAddress", "abi", "functionName"]}
+        },
+        {
+            "name": "write_contract",
+            "description": "Write to a contract via ABI (signed tx).",
+            "inputSchema": {"type": "object", "properties": {"private_key": {"type": "string"}, "contractAddress": {"type": "string"}, "abi": {"type": "string"}, "functionName": {"type": "string"}, "args": {"type": "array"}, "chain_id": {"type": "string"}, "network": {"type": "string"}, "gas_limit": {"type": "string"}, "gas_price": {"type": "string"}}, "required": ["private_key", "contractAddress", "abi", "functionName"]}
         },
         {
             "name": "get_chain_info",

@@ -1,10 +1,8 @@
 // src/api/discord.rs
 
 use axum::{extract::State, http::StatusCode, Json};
-use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::Value;
-use tracing::error;
 
 use crate::AppState;
 
@@ -14,12 +12,7 @@ pub struct DiscordPostRequest {
     pub username: Option<String>,
 }
 
-#[derive(Serialize)]
-struct WebhookBody<'a> {
-    content: &'a str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    username: Option<&'a str>,
-}
+// Note: request payload is passed straight to the unified service layer; no local payload struct needed.
 
 pub async fn post_discord_message(
     state: &AppState,

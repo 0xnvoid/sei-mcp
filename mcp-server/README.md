@@ -53,6 +53,7 @@ NATIVE_BECH32_HRP=sei
 Notes:
 - CHAIN_RPC_URLS is now required. There is no localhost fallback.
 - The Faucet is handled entirely by the external API. MCP does not store faucet keys.
+ - You can quickly start by copying `env.example` to `.env` and adjusting values.
 
 ### MCP Client Configuration
 
@@ -81,6 +82,26 @@ Update your `mcp.json` file:
 
 **Important**: Replace `/path/to/sei-mcp-server-rs` with the actual path to your project directory.
 
+#### Using the installed binary (after running the install script)
+
+If you installed via the provided script and `~/.local/bin` is on your PATH, reference the binary directly:
+
+```json
+{
+  "mcpServers": {
+    "sei-mcp-server": {
+      "command": "sei-mcp-server-rs",
+      "args": ["--mcp"],
+      "env": {
+        "CHAIN_RPC_URLS": "{\"sei-evm-testnet\":\"https://evm-rpc-testnet.sei-apis.com\",\"atlantic-2\":\"https://rpc-testnet.sei-apis.com\",\"sei-evm-mainnet\":\"https://evm-rpc.sei-apis.com\",\"pacific-1\":\"https://sei-rpc.polkachu.com\"}",
+        "FAUCET_API_URL": "https://sei-mcp.onrender.com",
+        "PORT": "8080"
+      }
+    }
+  }
+}
+```
+
 ## Usage
 
 ### MCP Server Mode (Recommended)
@@ -101,18 +122,7 @@ cargo run
 
 ## Secure Wallet Registration
 
-For maximum security, use the provided secure registration tool:
-
-```bash
-# Run the secure wallet registration tool
-./register_wallet.sh
-```
-
-This tool:
-- 🔐 Hides your private key and password input
-- 🧹 Clears terminal history after use
-- 📋 Generates the JSON request for you to copy/paste
-- ✅ Validates password confirmation
+Use the built-in MCP tools to register wallets securely (no external script required). See examples below under Wallet Management.
 
 ## Wallet Management
 
@@ -232,21 +242,41 @@ This returns a confirmation code and transaction ID.
 ## Available Tools
 
 ### Basic Tools
-- `get_balance` - Get address balance
-- `create_wallet` - Create new wallet
-- `import_wallet` - Import wallet from private key/mnemonic
-- `get_transaction_history` - Get transaction history
-- `estimate_fees` - Estimate transaction fees
-- `transfer_sei` - Direct transfer (requires private key)
-- `request_faucet` - Requests tokens via the external Faucet API (enforces cooldowns and rate-limits)
+- `get_balance` — Get address balance
+- `create_wallet` — Create new wallet
+- `import_wallet` — Import wallet from private key/mnemonic
+- `get_transaction_history` — Get transaction history
+- `get_transaction_info` — Get a transaction by hash
+- `get_chain_info` — Chain/network info snapshot
+- `estimate_fees` — Estimate transaction fees
+- `transfer_evm` — EVM value transfer (requires private key)
+- `transfer_sei` — Cosmos native transfer (requires private key)
+- `request_faucet` — Request tokens via the external Faucet API
+- `post_discord_message` — Send a message via Discord webhook/bot (optional)
 
 ### Enhanced Tools (with Persistent Storage)
-- `register_wallet` - Register wallet with encryption
-- `list_wallets` - List all stored wallets
-- `get_wallet_balance` - Get balance of stored wallet
-- `transfer_from_wallet` - Transfer from stored wallet (two-step)
-- `confirm_transaction` - Confirm pending transaction
-- `remove_wallet` - Remove wallet from storage
+- `register_wallet` — Register wallet with encryption
+- `list_wallets` — List stored wallets
+- `get_wallet_balance` — Balance for a stored wallet
+- `transfer_from_wallet` — Transfer from stored wallet (two-step)
+- `confirm_transaction` — Confirm pending transaction
+- `remove_wallet` — Remove wallet from storage
+
+### Token & Contract Tools
+- `get_token_info` — ERC20 name/symbol/decimals/totalSupply (decoded + raw)
+- `get_token_balance` — ERC20 balanceOf (decoded + raw)
+- `get_token_allowance` — ERC20 allowance (owner → spender)
+- `transfer_token` — ERC20 transfer
+- `approve_token_spending` — ERC20 approve
+- `get_nft_info` — ERC721 tokenURI
+- `check_nft_ownership` — ERC721 ownerOf
+- `get_nft_balance` — ERC721 balanceOf
+- `get_erc1155_token_uri` — ERC1155 uri
+- `get_erc1155_balance` — ERC1155 balanceOf
+- `transfer_erc1155` — ERC1155 safeTransferFrom
+- `is_contract` — Check if address has code
+- `read_contract` — eth_call by ABI/function/args
+- `write_contract` — Signed contract write by ABI/function/args
 
 ## Security Features
 
@@ -309,22 +339,24 @@ cargo test test_wallet_storage
 ```
 src/
 ├── mcp/
-│   ├── encryption.rs      # AES-256-GCM encryption
-│   ├── wallet_storage.rs  # Persistent storage management
-│   ├── enhanced_tools.rs  # MCP tools with storage
-│   ├── tools.rs          # Basic MCP tools
-│   ├── protocol.rs       # MCP protocol definitions
-│   └── transport.rs      # MCP transport layer
-├── blockchain/           # Blockchain client and services
-├── api/                 # HTTP API endpoints
-└── main.rs              # Application entry point
+│   ├── encryption.rs      # AES-256-GCM encryption helpers
+│   ├── wallet_storage.rs  # Encrypted wallet registry + persistence
+│   ├── handler.rs         # MCP dispatcher and tool implementations
+│   ├── protocol.rs        # MCP protocol types
+│   └── mod.rs             # Module glue
+├── blockchain/
+│   ├── client.rs          # HTTP client + RPC orchestration
+│   └── services/          # Contract, token, chain, tx utilities
+├── api/                   # HTTP API endpoints
+├── main.rs                # Entry point for HTTP and MCP modes
+└── lib.rs                 # Library entrypoint (tests reuse)
 ```
 
 ### Adding New Tools
 
-1. Add tool function in `src/mcp/enhanced_tools.rs`
-2. Add tool definition in `list_enhanced_tools()`
-3. Add dispatch case in `src/mcp/mod.rs`
+1. Implement the tool logic in `src/mcp/handler.rs` within `handle_tool_call()`.
+2. Add the tool to the tools list response in `handle_mcp_request()` for discovery (name, description, JSON schema for arguments).
+3. If needed, add helpers under `src/blockchain/services/` and call them from the handler.
 
 ## License
 

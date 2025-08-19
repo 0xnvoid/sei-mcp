@@ -30,7 +30,7 @@ PORT=3000
 # Redis (Upstash free)
 REDIS_URL=rediss://<user>:<pass>@<host>:<port>
 
-# RPCs
+# RPCs (JSON map). Include any chains you intend to support
 CHAIN_RPC_URLS={"sei-evm-testnet":"https://evm-rpc-testnet.sei-apis.com","sei-native-testnet":"https://rpc-testnet.sei-apis.com"}
 
 # Amount/denom
@@ -52,6 +52,29 @@ FAUCET_MNEMONIC_NATIVE="your mnemonic here"
 # or
 # FAUCET_PRIVATE_KEY_NATIVE=hex_without_0x
 ```
+
+## Integration with MCP server
+
+Point the MCP server to this service by setting `FAUCET_API_URL` in its environment. Example MCP client config (`mcp-server/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "sei-mcp": {
+      "command": "/path/to/mcp-server/target/release/sei-mcp-server-rs",
+      "args": ["--mcp"],
+      "cwd": "/path/to/mcp-server",
+      "env": {
+        "CHAIN_RPC_URLS": "{\"sei-evm-testnet\":\"https://evm-rpc-testnet.sei-apis.com\",\"atlantic-2\":\"https://rpc-testnet.sei-apis.com\",\"sei-evm-mainnet\":\"https://evm-rpc.sei-apis.com\",\"pacific-1\":\"https://sei-rpc.polkachu.com\"}",
+        "FAUCET_API_URL": "https://your-faucet-host",
+        "PORT": "8080"
+      }
+    }
+  }
+}
+```
+
+See also: `../mcp-server/README.md` for server tools and usage.
 
 ## Local Development
 

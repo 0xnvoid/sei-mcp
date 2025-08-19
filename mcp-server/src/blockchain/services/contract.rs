@@ -5,13 +5,12 @@ use reqwest::Client;
 use serde_json::Value;
 
 // Seistream contract API (chain-agnostic base; network inferred by address)
-const SEISCAN_API_MAINNET: &str = "https://api.seistream.app/contracts/evm";
-const SEISCAN_API_TESTNET: &str = "https://api.seistream.app/contracts/evm";
+const SEISCAN_API_BASE: &str = "https://api.seistream.app/contracts/evm";
 
 fn get_seiscan_api_base(chain_id: &str) -> &str {
     // Currently the API host/path does not vary per chain; keep function for future flexibility.
     let _ = chain_id; // suppress unused warning in case of future use
-    SEISCAN_API_MAINNET
+    SEISCAN_API_BASE
 }
 
 pub async fn get_contract(client: &Client, chain_id: &str, address: &str) -> Result<Value> {
