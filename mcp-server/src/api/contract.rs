@@ -8,6 +8,7 @@ use axum::{
     Json,
 };
 use serde::Deserialize;
+use serde_json::json;
 use tracing::error;
 
 #[derive(Deserialize)]
@@ -62,6 +63,23 @@ pub async fn get_contract_transactions_handler(
         Ok(txs) => (StatusCode::OK, Json(txs)).into_response(),
         Err(e) => {
             error!("Failed to get contract transactions: {:?}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+        }
+    }
+}
+
+pub async fn get_is_contract_handler(
+    State(state): State<AppState>,
+    Path(params): Path<ContractPath>,
+) -> impl IntoResponse {
+    match state
+        .sei_client
+        .is_contract(&params.chain_id, &params.address)
+        .await
+    {
+        Ok(is_contract) => (StatusCode::OK, Json(json!({ "is_contract": is_contract }))).into_response(),
+        Err(e) => {
+            error!("Failed to check is_contract: {:?}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
         }
     }

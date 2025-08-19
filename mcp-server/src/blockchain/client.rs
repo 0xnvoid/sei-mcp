@@ -106,14 +106,43 @@ impl SeiClient {
 
     // --- Contract inspection ---
     pub async fn get_contract(&self, chain_id: &str, address: &str) -> Result<Value> {
+        if address.starts_with("sei1") {
+            let rpc = self.get_rpc_url(chain_id)?;
+            return crate::blockchain::services::contract::get_cosmos_contract(&self.client, rpc, address).await;
+        }
         contract::get_contract(&self.client, chain_id, address).await
     }
 
     pub async fn get_contract_code(&self, chain_id: &str, address: &str) -> Result<Value> {
+        if address.starts_with("sei1") {
+            let rpc = self.get_rpc_url(chain_id)?;
+            return crate::blockchain::services::contract::get_cosmos_contract_code(&self.client, rpc, address).await;
+        }
         contract::get_contract_code(&self.client, chain_id, address).await
     }
 
     pub async fn get_contract_transactions(&self, chain_id: &str, address: &str) -> Result<Value> {
+        if address.starts_with("sei1") {
+            let rpc = self.get_rpc_url(chain_id)?;
+            // default page/limit for now
+            return crate::blockchain::services::contract::get_cosmos_contract_transactions(&self.client, rpc, address, None, Some(50)).await;
+        }
         contract::get_contract_transactions(&self.client, chain_id, address).await
+    }
+
+    /// Determine if an address corresponds to a deployed contract.
+    /// For Sei native (Cosmos) addresses (sei1...), prefer node REST check; fallback to Seistream API on non-200.
+    /// For EVM (0x...) addresses, uses Seistream EVM contracts API.
+    pub async fn is_contract(&self, chain_id: &str, address: &str) -> Result<bool> {
+        if address.starts_with("sei1") {
+            let rpc = self.get_rpc_url(chain_id)?;
+            // Try node REST
+            let v = crate::blockchain::services::contract::is_cosmos_contract_node(&self.client, rpc, address).await?;
+            return Ok(v);
+        }
+        if address.starts_with("0x") || address.starts_with("0X") {
+            return contract::is_evm_contract(&self.client, address).await;
+        }
+        anyhow::bail!("Unrecognized address format for Sei/Cosmos or EVM: {}", address)
     }
 }

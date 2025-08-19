@@ -6,6 +6,8 @@ use serde_json::Value;
 
 // Seistream contract API (chain-agnostic base; network inferred by address)
 const SEISCAN_API_BASE: &str = "https://api.seistream.app/contracts/evm";
+// Seistream Cosmos contracts base (for native Sei addresses like sei1...)
+const SEISCAN_COSMOS_API_BASE: &str = "https://api.seistream.app/contracts/cosmos";
 
 fn get_seiscan_api_base(chain_id: &str) -> &str {
     // Currently the API host/path does not vary per chain; keep function for future flexibility.
@@ -57,6 +59,40 @@ pub async fn get_contract_transactions(
         Ok(v) => Ok(v),
         Err(_) => Ok(serde_json::json!({ "status": status.as_u16(), "raw": body })),
     }
+}
+
+/// Check if a Cosmos (Sei native) address is a smart contract by querying Seistream.
+/// Returns true if the endpoint responds with 200 and a plausible contract JSON, false on 404.
+/// Any non-200/404 status or network error is propagated as an error.
+pub async fn is_cosmos_contract(client: &Client, address: &str) -> Result<bool> {
+    let url = format!("{}/{}", SEISCAN_COSMOS_API_BASE, address);
+    let res = client.get(&url).send().await?;
+    let status = res.status();
+    if status.as_u16() == 404 {
+        return Ok(false);
+    }
+    let body = res.text().await.unwrap_or_default();
+    if !status.is_success() {
+        // Surface upstream error for observability
+        anyhow::bail!("Upstream error {}: {}", status.as_u16(), body);
+    }
+    // 200 means the address corresponds to a contract document
+    Ok(true)
+}
+
+/// Check if an EVM address is a smart contract via Seistream EVM contracts API.
+pub async fn is_evm_contract(client: &Client, address: &str) -> Result<bool> {
+    let url = format!("{}/{}", SEISCAN_API_BASE, address);
+    let res = client.get(&url).send().await?;
+    let status = res.status();
+    if status.as_u16() == 404 {
+        return Ok(false);
+    }
+    let body = res.text().await.unwrap_or_default();
+    if !status.is_success() {
+        anyhow::bail!("Upstream error {}: {}", status.as_u16(), body);
+    }
+    Ok(true)
 }
 
 // Normalize upstream contract code JSON into the strict schema required by clients.
@@ -165,3 +201,73 @@ fn normalize_contract_code(v: Value) -> Value {
     })
 }
 
+/// Get CosmWasm contract info via node REST API
+pub async fn get_cosmos_contract(client: &Client, rpc_url: &str, address: &str) -> Result<Value> {
+    let url = format!("{}/cosmwasm/wasm/v1/contract/{}", rpc_url.trim_end_matches('/'), address);
+    let res = client.get(&url).send().await?;
+    let status = res.status();
+    let body = res.text().await.unwrap_or_default();
+    if !status.is_success() {
+        anyhow::bail!("Cosmos contract lookup {}: {}", status.as_u16(), body);
+    }
+    Ok(serde_json::from_str(&body).unwrap_or_else(|_| serde_json::json!({ "raw": body })))
+}
+
+/// Get CosmWasm code info for a contract via node REST API
+pub async fn get_cosmos_contract_code(client: &Client, rpc_url: &str, address: &str) -> Result<Value> {
+    // First fetch contract to discover code_id
+    let contract = get_cosmos_contract(client, rpc_url, address).await?;
+    let code_id = contract
+        .get("contract_info")
+        .and_then(|ci| ci.get("code_id"))
+        .and_then(|c| c.as_str())
+        .ok_or_else(|| anyhow::anyhow!("missing contract_info.code_id in response"))?;
+    let url = format!("{}/cosmwasm/wasm/v1/code/{}", rpc_url.trim_end_matches('/'), code_id);
+    let res = client.get(&url).send().await?;
+    let status = res.status();
+    let body = res.text().await.unwrap_or_default();
+    if !status.is_success() {
+        anyhow::bail!("Cosmos code lookup {}: {}", status.as_u16(), body);
+    }
+    Ok(serde_json::from_str(&body).unwrap_or_else(|_| serde_json::json!({ "raw": body })))
+}
+
+/// Node-based contract existence check (no third-party service)
+pub async fn is_cosmos_contract_node(client: &Client, rpc_url: &str, address: &str) -> Result<bool> {
+    let url = format!("{}/cosmwasm/wasm/v1/contract/{}", rpc_url.trim_end_matches('/'), address);
+    let res = client.get(&url).send().await?;
+    let status = res.status();
+    if status.as_u16() == 404 { return Ok(false); }
+    if !status.is_success() {
+        let body = res.text().await.unwrap_or_default();
+        anyhow::bail!("Cosmos contract lookup {}: {}", status.as_u16(), body);
+    }
+    Ok(true)
+}
+
+/// List transactions that involve a CosmWasm contract using the node REST API
+pub async fn get_cosmos_contract_transactions(
+    client: &Client,
+    rpc_url: &str,
+    address: &str,
+    page: Option<u64>,
+    limit: Option<u64>,
+) -> Result<Value> {
+    let base = format!("{}/cosmos/tx/v1beta1/txs", rpc_url.trim_end_matches('/'));
+    let mut req = client
+        .get(&base)
+        .query(&[("order_by", "ORDER_BY_DESC")]);
+    if let Some(p) = page { req = req.query(&[("pagination.page", &p.to_string())]); }
+    if let Some(l) = limit { req = req.query(&[("pagination.limit", &l.to_string())]); }
+    // events=wasm._contract_address='sei1...'
+    let ev = format!("wasm._contract_address='{}'", address);
+    req = req.query(&[("events", &ev)]);
+
+    let res = req.send().await?;
+    let status = res.status();
+    let body = res.text().await.unwrap_or_default();
+    if !status.is_success() {
+        anyhow::bail!("Cosmos tx search {}: {}", status.as_u16(), body);
+    }
+    Ok(serde_json::from_str(&body).unwrap_or_else(|_| serde_json::json!({ "raw": body })))
+}

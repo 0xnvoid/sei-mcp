@@ -8,7 +8,7 @@ use sei_mcp_server_rs::{
         faucet::request_faucet,
         health::health_handler,
         history::get_transaction_history_handler,
-        contract::{get_contract_handler, get_contract_code_handler, get_contract_transactions_handler},
+        contract::{get_contract_handler, get_contract_code_handler, get_contract_transactions_handler, get_is_contract_handler},
         tx::send_transaction_handler,
         wallet::{create_wallet_handler, import_wallet_handler},
         discord::post_discord_handler,
@@ -60,6 +60,10 @@ async fn run_http_server(state: AppState) {
         .route(
             "/contract/:chain_id/:address/transactions",
             get(get_contract_transactions_handler),
+        )
+        .route(
+            "/contract/:chain_id/:address/is_contract",
+            get(get_is_contract_handler),
         )
         // Discord integration route
         .route("/api/discord/post", post(post_discord_handler))

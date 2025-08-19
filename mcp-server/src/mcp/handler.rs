@@ -426,20 +426,35 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
             res.unwrap_or_else(|err_resp| err_resp)
         }
 
-        "create_wallet" => match state.sei_client.create_wallet().await {
-            Ok(wallet) => {
-                let summary = format!("Created wallet {}", wallet.address);
-                Response::success(req_id.clone(), make_texty_result(summary, json!(wallet)))
-            }
-            Err(e) => Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()),
+        "create_wallet" => {
+            let res: Result<Response, Response> = (async {
+                // Optional chain_type: "evm" (default) or "native"
+                let chain_type = args
+                    .get("chain_type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("evm");
+                let ct = match chain_type {
+                    "native" => ChainType::Native,
+                    _ => ChainType::Evm,
+                };
+                let wallet = crate::blockchain::services::wallet::create_wallet_for_network(ct)
+                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
+                let summary = format!("Created {} wallet {}", match ct { ChainType::Native => "native", ChainType::Evm => "evm" }, wallet.address);
+                Ok(Response::success(req_id.clone(), make_texty_result(summary, json!(wallet))))
+            }).await;
+            res.unwrap_or_else(|err_resp| err_resp)
         },
 
         "import_wallet" => {
             let res: Result<Response, Response> = (async {
                 let key = utils::get_required_arg::<String>(args, "key", req_id)?;
-                let wallet = state.sei_client.import_wallet(&key).await.map_err(|e| {
-                    Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string())
-                })?;
+                let chain_type = args
+                    .get("chain_type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("evm");
+                let ct = match chain_type { "native" => ChainType::Native, _ => ChainType::Evm };
+                let wallet = crate::blockchain::services::wallet::import_wallet_for_network(ct, &key)
+                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
                 let summary = format!("Imported wallet {}", wallet.address);
                 Ok(Response::success(
                     req_id.clone(),
@@ -764,15 +779,8 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                     .to(contract)
                     .data(data_bytes)
                     .value(U256::zero());
-                if let Some(g) = args.get("gas_limit").and_then(|v| v.as_str()) {
-                    tx_request =
-                        tx_request.gas(U256::from_dec_str(g).unwrap_or_else(|_| U256::from(0)));
-                }
-                if let Some(gp) = args.get("gas_price").and_then(|v| v.as_str()) {
-                    tx_request = tx_request
-                        .gas_price(U256::from_dec_str(gp).unwrap_or_else(|_| U256::from(0)));
-                }
-
+                if let Some(g) = args.get("gas_limit").and_then(|v| v.as_str()) { tx_request = tx_request.gas(U256::from_dec_str(g).unwrap_or_else(|_| U256::from(0))); }
+                if let Some(gp) = args.get("gas_price").and_then(|v| v.as_str()) { tx_request = tx_request.gas_price(U256::from_dec_str(gp).unwrap_or_else(|_| U256::from(0))); }
                 let response = state
                     .sei_client
                     .send_transaction(&chain_id, &private_key, tx_request, &state.nonce_manager)
@@ -794,43 +802,69 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                 let master_password =
                     utils::get_required_arg::<String>(args, "master_password", req_id)?;
 
+                // Optional chain_type for address derivation
+                let chain_type = args
+                    .get("chain_type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("evm");
+                let ct = match chain_type { "native" => ChainType::Native, _ => ChainType::Evm };
+
                 let wallet_info: WalletResponse =
-                    wallet::import_wallet(&private_key).map_err(|e| {
+                    wallet::import_wallet_for_network(ct, &private_key).map_err(|e| {
                         Response::error(req_id.clone(), error_codes::INVALID_PARAMS, e.to_string())
                     })?;
 
-                let mut storage = state.wallet_storage.lock().await;
-                if !storage.verify_master_password(&master_password) {
-                    return Err(Response::error(
-                        req_id.clone(),
-                        error_codes::INTERNAL_ERROR,
-                        "Invalid master password".into(),
-                    ));
-                }
-
-                storage
-                    .add_wallet(
-                        wallet_name.clone(),
-                        &private_key,
-                        wallet_info.address,
-                        &master_password,
-                    )
-                    .map_err(|e| {
-                        Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string())
-                    })?;
-
-                wallet_storage::save_wallet_storage(&state.wallet_storage_path, &storage).map_err(
-                    |e| {
-                        error!("Failed to save wallet storage: {}", e);
-                        Response::error(
+                // Lazy-initialize or load wallet storage from disk using the provided master password.
+                // If in-memory storage is empty (no master password set), replace it with the loaded one.
+                {
+                    let mut storage = state.wallet_storage.lock().await;
+                    if storage.master_password_hash.is_empty() {
+                        let loaded = wallet_storage::load_or_create_wallet_storage(&state.wallet_storage_path, &master_password)
+                            .map_err(|e| {
+                                Response::error(
+                                    req_id.clone(),
+                                    error_codes::INTERNAL_ERROR,
+                                    format!("Failed to initialize wallet storage: {}", e),
+                                )
+                            })?;
+                        *storage = loaded;
+                    } else if !storage.verify_master_password(&master_password) {
+                        return Err(Response::error(
                             req_id.clone(),
                             error_codes::INTERNAL_ERROR,
-                            "Failed to save wallet to disk".into(),
-                        )
-                    },
-                )?;
+                            "Invalid master password".into(),
+                        ));
+                    }
+                }
 
-                let payload = json!({ "status": "success", "wallet_name": wallet_name });
+                // Add wallet into storage
+                {
+                    let mut storage = state.wallet_storage.lock().await;
+                    storage
+                        .add_wallet(
+                            wallet_name.clone(),
+                            &private_key,
+                            wallet_info.address.clone(),
+                            &master_password,
+                        )
+                        .map_err(|e| {
+                            Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string())
+                        })?;
+                    // Persist to disk
+                    wallet_storage::save_wallet_storage(&state.wallet_storage_path, &storage).map_err(
+                        |e| {
+                            error!("Failed to save wallet storage: {}", e);
+                            Response::error(
+                                req_id.clone(),
+                                error_codes::INTERNAL_ERROR,
+                                "Failed to save wallet to disk".into(),
+                            )
+                        },
+                    )?;
+                }
+
+                // Return the derived address too for convenience
+                let payload = json!({ "status": "success", "wallet_name": wallet_name, "address": wallet_info.address });
                 let summary = format!("Registered wallet {}", wallet_name);
                 Ok(Response::success(
                     req_id.clone(),
@@ -845,6 +879,15 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
             let res: Result<Response, Response> = (async {
                 let master_password =
                     utils::get_required_arg::<String>(args, "master_password", req_id)?;
+                // Lazy-load or initialize storage if needed using the provided master password
+                {
+                    let mut storage = state.wallet_storage.lock().await;
+                    if storage.master_password_hash.is_empty() {
+                        let loaded = wallet_storage::load_or_create_wallet_storage(&state.wallet_storage_path, &master_password)
+                            .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, format!("Failed to initialize wallet storage: {}", e)))?;
+                        *storage = loaded;
+                    }
+                }
                 let storage = state.wallet_storage.lock().await;
                 if !storage.verify_master_password(&master_password) {
                     return Err(Response::error(
@@ -853,7 +896,15 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                         "Invalid master password".into(),
                     ));
                 }
-                let wallets = storage.list_wallets();
+                // Return wallet names with their public addresses
+                let mut wallets: Vec<serde_json::Value> = Vec::new();
+                for w in storage.wallets.values() {
+                    wallets.push(json!({
+                        "wallet_name": w.wallet_name,
+                        "address": w.public_address,
+                    }));
+                }
+                wallets.sort_by(|a, b| a["wallet_name"].as_str().unwrap_or("").cmp(b["wallet_name"].as_str().unwrap_or("")));
                 let count = wallets.len();
                 let payload = json!({ "wallets": wallets });
                 let summary = format!("{} wallet(s)", count);
@@ -1027,12 +1078,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
         // Aliases: accept both snake_case and hyphen-case used upstream
         "get_token_info" | "get-token-info" => {
             let res: Result<Response, Response> = (async {
-                let mut chain_id = args
-                    .get("chain_id")
-                    .or_else(|| args.get("network"))
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| "sei-evm-testnet".to_string());
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
                 chain_id = normalize_chain_id(&chain_id);
                 let token = utils::get_required_arg::<String>(args, "tokenAddress", req_id)
                     .or_else(|_| utils::get_required_arg::<String>(args, "token_address", req_id))?;
@@ -1199,6 +1245,15 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                 let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
                 chain_id = normalize_chain_id(&chain_id);
                 let address = utils::get_required_arg::<String>(args, "address", req_id)?;
+
+                // For Sei native (Cosmos) addresses, use SeiClient which calls Seistream Cosmos API.
+                if address.starts_with("sei1") {
+                    let ok = state.sei_client.is_contract(&chain_id, &address).await
+                        .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
+                    return Ok(Response::success(req_id.clone(), json!({"is_contract": ok, "content": [{"type":"text","text": format!("{} is {}a contract", address, if ok {""} else {"not "})}]})));
+                }
+
+                // Fallback to EVM path (eth_getCode) requiring an RPC URL.
                 let rpc_url = state.config.chain_rpc_urls.get(&chain_id).ok_or_else(|| Response::error(req_id.clone(), error_codes::INVALID_PARAMS, format!("RPC URL not configured for chain_id '{}'", chain_id)))?;
                 let client = Client::new();
                 let ok = crate::blockchain::services::token::is_contract(&client, rpc_url, &address).await
@@ -1238,6 +1293,133 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                     .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
                 Ok(Response::success(req_id.clone(), make_texty_result(format!("write {}.{} sent", contract, function), json!(resp))))
             }).await; match res { Ok(r) => r, Err(e) => e }
+        }
+        "get_chain_info" => {
+            let res: Result<Response, Response> = (async {
+                let client = Client::new();
+                let v = crate::blockchain::services::seistream::get_chain_info(&client)
+                    .await
+                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
+                // Provide both human-friendly text content and raw JSON for clients to parse
+                let latest = v.get("latestBlock").and_then(|b| b.get("height")).and_then(|h| h.as_u64());
+                let network = v.get("network").and_then(|n| n.as_str()).unwrap_or("unknown");
+                let summary = if let Some(h) = latest { format!("Chain info — {} (height {})", network, h) } else { format!("Chain info — {}", network) };
+                Ok(Response::success(
+                    req_id.clone(),
+                    json!({
+                        // flatten key fields for clients that render top-level data
+                        "network": v.get("network"),
+                        "latestBlock": v.get("latestBlock"),
+                        "validators": v.get("validators"),
+                        "window": v.get("window"),
+                        // full payload for programmatic consumers
+                        "data": v,
+                        // human summary
+                        "content": [ { "type": "text", "text": summary } ]
+                    }),
+                ))
+            })
+            .await;
+            match res { Ok(r) => r, Err(e) => e }
+        }
+        "get_transaction_info" => {
+            let res: Result<Response, Response> = (async {
+                let hash = utils::get_required_arg::<String>(args, "hash", req_id)?;
+                let client = Client::new();
+                let v = crate::blockchain::services::seistream::get_transaction_info(&client, &hash)
+                    .await
+                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
+                let status = v.get("status").and_then(|s| s.as_str()).unwrap_or("");
+                let from = v.get("from").and_then(|s| s.as_str()).unwrap_or("");
+                let to = v.get("to").and_then(|s| s.as_str()).unwrap_or("");
+                let summary = if !status.is_empty() {
+                    format!("Tx {} — {} ({} -> {})", &hash, status, from, to)
+                } else {
+                    format!("Tx {}", &hash)
+                };
+                Ok(Response::success(
+                    req_id.clone(),
+                    json!({
+                        // expose common tx fields at top-level when present
+                        "hash": v.get("hash").cloned().unwrap_or_else(|| json!(hash)),
+                        "from": v.get("from"),
+                        "to": v.get("to"),
+                        "status": v.get("status"),
+                        "blockNumber": v.get("blockNumber"),
+                        // full payload
+                        "data": v,
+                        // human summary
+                        "content": [ { "type": "text", "text": summary } ]
+                    })
+                ))
+            })
+            .await;
+            match res { Ok(r) => r, Err(e) => e }
+        }
+        "get_transaction_history" => {
+            let res: Result<Response, Response> = (async {
+                let address = utils::get_required_arg::<String>(args, "address", req_id)?;
+                let page = args.get("page").and_then(|v| v.as_u64());
+                let client = Client::new();
+                let v = crate::blockchain::services::seistream::get_transaction_history(&client, &address, page)
+                    .await
+                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
+                let count = v.get("items").and_then(|i| i.as_array()).map(|a| a.len()).unwrap_or(0);
+                let summary = match page {
+                    Some(p) => format!("History for {} — {} item(s) on page {}", &address, count, p),
+                    None => format!("History for {} — {} item(s)", &address, count),
+                };
+                Ok(Response::success(
+                    req_id.clone(),
+                    json!({
+                        "data": v,
+                        "content": [ { "type": "text", "text": summary } ]
+                    })
+                ))
+            })
+            .await;
+            match res { Ok(r) => r, Err(e) => e }
+        }
+        "get_nft_metadata" => {
+            let res: Result<Response, Response> = (async {
+                // ERC-721 items for a contract
+                let contract = utils::get_required_arg::<String>(args, "contract_address", req_id)?;
+                let page = args.get("page").and_then(|v| v.as_u64());
+                let client = Client::new();
+                let v = crate::blockchain::services::seistream::get_nft_metadata_erc721_items(&client, &contract, page)
+                    .await
+                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
+                let count = v.get("items").and_then(|i| i.as_array()).map(|a| a.len()).unwrap_or(0);
+                let summary = match page {
+                    Some(p) => format!("ERC-721 items for {} — {} item(s) on page {}", &contract, count, p),
+                    None => format!("ERC-721 items for {} — {} item(s)", &contract, count),
+                };
+                // Optionally include the first item inline as text preview for Claude UX
+                let preview = v.get("items").and_then(|i| i.as_array()).and_then(|a| a.get(0)).cloned();
+                let mut content = vec![ json!({ "type": "text", "text": summary }) ];
+                if let Some(first) = preview {
+                    if let Ok(pretty) = serde_json::to_string_pretty(&first) {
+                        content.push(json!({ "type": "text", "text": format!("Preview (first item):\n{}", pretty) }));
+                    }
+                }
+                Ok(Response::success(
+                    req_id.clone(),
+                    json!({
+                        // top-level helpful fields for clients
+                        "contract_address": contract,
+                        "page": page,
+                        "count": count,
+                        // first item preview also as structured field
+                        "preview": v.get("items").and_then(|i| i.as_array()).and_then(|a| a.get(0)).cloned(),
+                        // full payload
+                        "data": v,
+                        // human summary and preview text
+                        "content": content
+                    })
+                ))
+            })
+            .await;
+            match res { Ok(r) => r, Err(e) => e }
         }
         _ => Response::error(
             req.id,
