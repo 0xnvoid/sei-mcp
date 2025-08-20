@@ -477,7 +477,15 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
 
         "import_wallet" => {
             let res: Result<Response, Response> = (async {
-                let key = utils::get_required_arg::<String>(args, "key", req_id)?;
+                // Accept either 'mnemonic_or_private_key' (preferred) or legacy 'key'
+                let key = if let Some(s) = args
+                    .get("mnemonic_or_private_key")
+                    .and_then(|v| v.as_str())
+                {
+                    s.to_string()
+                } else {
+                    utils::get_required_arg::<String>(args, "key", req_id)?
+                };
                 let chain_type = args
                     .get("chain_type")
                     .and_then(|v| v.as_str())
@@ -847,7 +855,6 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
         "register_wallet" => {
             let res: Result<Response, Response> = (async {
                 let wallet_name = utils::get_required_arg::<String>(args, "wallet_name", req_id)?;
-                let private_key = utils::get_required_arg::<String>(args, "private_key", req_id)?;
                 let master_password =
                     utils::get_required_arg::<String>(args, "master_password", req_id)?;
 
@@ -858,8 +865,16 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                     .unwrap_or("evm");
                 let ct = match chain_type { "native" => ChainType::Native, _ => ChainType::Evm };
 
+                // Accept either 'mnemonic_or_private_key' (preferred) or legacy 'private_key'
+                let key = if let Some(s) = args
+                    .get("mnemonic_or_private_key")
+                    .and_then(|v| v.as_str())
+                { s.to_string() } else {
+                    utils::get_required_arg::<String>(args, "private_key", req_id)?
+                };
+
                 let wallet_info: WalletResponse =
-                    wallet::import_wallet_for_network(ct, &private_key).map_err(|e| {
+                    wallet::import_wallet_for_network(ct, &key).map_err(|e| {
                         Response::error(req_id.clone(), error_codes::INVALID_PARAMS, e.to_string())
                     })?;
 
@@ -881,7 +896,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                         return Err(Response::error(
                             req_id.clone(),
                             error_codes::INTERNAL_ERROR,
-                            "Invalid master password".into(),
+                            "Authentication failed".into(),
                         ));
                     }
                 }
@@ -892,7 +907,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                     storage
                         .add_wallet(
                             wallet_name.clone(),
-                            &private_key,
+                            wallet_info.private_key.as_str(),
                             wallet_info.address.clone(),
                             &master_password,
                         )
@@ -942,7 +957,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                     return Err(Response::error(
                         req_id.clone(),
                         error_codes::INTERNAL_ERROR,
-                        "Invalid master password".into(),
+                        "Authentication failed".into(),
                     ));
                 }
                 // Return wallet names with their public addresses
@@ -955,11 +970,33 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                 }
                 wallets.sort_by(|a, b| a["wallet_name"].as_str().unwrap_or("").cmp(b["wallet_name"].as_str().unwrap_or("")));
                 let count = wallets.len();
-                let payload = json!({ "wallets": wallets });
+                // Build a human-readable list for MCP clients that only display text content
+                let mut lines: Vec<String> = Vec::new();
+                for w in storage.wallets.values() {
+                    lines.push(format!("• {} — {}", w.wallet_name, w.public_address));
+                }
+                lines.sort();
+                let details_text = if lines.is_empty() {
+                    "No wallets stored".to_string()
+                } else {
+                    format!("\n{}", lines.join("\n"))
+                };
                 let summary = format!("{} wallet(s)", count);
+                let content = if lines.is_empty() {
+                    vec![ json!({ "type": "text", "text": summary }) ]
+                } else {
+                    vec![
+                        json!({ "type": "text", "text": summary }),
+                        json!({ "type": "text", "text": details_text })
+                    ]
+                };
                 Ok(Response::success(
                     req_id.clone(),
-                    make_texty_result(summary, payload),
+                    json!({
+                        "count": count,
+                        "wallets": wallets,
+                        "content": content
+                    })
                 ))
             })
             .await;
@@ -1527,13 +1564,19 @@ fn handle_tools_list(req: &Request) -> Response {
         },
         {
             "name": "import_wallet",
-            "description": "Import an EVM wallet from a mnemonic phrase or private key.",
+            "description": "Import a wallet from a mnemonic phrase or private key.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "mnemonic_or_private_key": {"type": "string", "description": "The mnemonic phrase or private key to import."}
+                    "mnemonic_or_private_key": {"type": "string", "description": "Mnemonic phrase or private key."},
+                    "key": {"type": "string", "description": "Alias for mnemonic_or_private_key (back-compat)."},
+                    "chain_type": {"type": "string", "description": "'evm' (default) or 'native'"}
                 },
-                "required": ["mnemonic_or_private_key"]
+                "oneOf": [
+                    {"required": ["mnemonic_or_private_key"]},
+                    {"required": ["key"]}
+                ],
+                "additionalProperties": false
             }
         },
         {
@@ -1567,15 +1610,21 @@ fn handle_tools_list(req: &Request) -> Response {
         },
         {
             "name": "register_wallet",
-            "description": "Encrypt and securely store a private key under a wallet name.",
+            "description": "Encrypt and securely store a wallet under a name using a mnemonic or private key.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "wallet_name": {"type": "string", "description": "A unique name for the wallet (e.g., 'my-primary-wallet')."},
-                    "private_key": {"type": "string", "description": "The private key to encrypt and store."},
-                    "master_password": {"type": "string", "description": "The master password to encrypt the wallet. This password will be required for any future actions with this wallet."}
+                    "mnemonic_or_private_key": {"type": "string", "description": "Mnemonic phrase or private key to register."},
+                    "private_key": {"type": "string", "description": "Alias input for compatibility (private key)."},
+                    "master_password": {"type": "string", "description": "The master password to encrypt the wallet. This password will be required for any future actions with this wallet."},
+                    "chain_type": {"type": "string", "description": "'evm' (default) or 'native'"}
                 },
-                "required": ["wallet_name", "private_key", "master_password"]
+                "oneOf": [
+                    {"required": ["wallet_name", "mnemonic_or_private_key", "master_password"]},
+                    {"required": ["wallet_name", "private_key", "master_password"]}
+                ],
+                "additionalProperties": false
             }
         },
         {

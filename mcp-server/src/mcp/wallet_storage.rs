@@ -59,7 +59,7 @@ impl WalletStorage {
         master_password: &str,
     ) -> Result<()> {
         if !self.verify_master_password(master_password) {
-            return Err(anyhow!("Invalid master password"));
+            return Err(anyhow!("Authentication failed"));
         }
         if self.wallets.contains_key(&wallet_name) {
             return Err(anyhow!("Wallet with name '{}' already exists", wallet_name));
@@ -86,7 +86,7 @@ impl WalletStorage {
         master_password: &str,
     ) -> Result<String> {
         if !self.verify_master_password(master_password) {
-            return Err(anyhow!("Invalid master password"));
+            return Err(anyhow!("Authentication failed"));
         }
         let wallet = self
             .wallets
@@ -103,7 +103,7 @@ impl WalletStorage {
 
     pub fn remove_wallet(&mut self, wallet_name: &str, master_password: &str) -> Result<bool> {
         if !self.verify_master_password(master_password) {
-            return Err(anyhow!("Invalid master password"));
+            return Err(anyhow!("Authentication failed"));
         }
         if self.wallets.remove(wallet_name).is_some() {
             self.updated_at = Utc::now();
@@ -139,7 +139,7 @@ pub fn load_or_create_wallet_storage(file_path: &Path, master_password: &str) ->
     let storage: WalletStorage = serde_json::from_str(&json).context("Failed to parse wallet storage JSON")?;
 
     if !storage.verify_master_password(master_password) {
-        return Err(anyhow!("Invalid master password for existing wallet storage"));
+        return Err(anyhow!("Authentication failed"));
     }
 
     Ok(storage)

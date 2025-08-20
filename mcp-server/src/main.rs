@@ -1,6 +1,7 @@
 // src/main.rs
 
 use axum::{routing::get, routing::post, Router};
+use axum::{extract::State, Json};
 use sei_mcp_server_rs::AppState;
 use sei_mcp_server_rs::{
     api::{
@@ -82,6 +83,8 @@ async fn run_http_server(state: AppState) {
             "/api/tokens/evm/erc721/:address/items",
             get(get_nft_metadata_items_handler),
         )
+        // JSON-RPC endpoint to forward MCP tool calls over HTTP
+        .route("/rpc", post(rpc_handler))
         .with_state(state.clone()) // Use the shared state
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())
@@ -91,6 +94,21 @@ async fn run_http_server(state: AppState) {
     info!("🚀 HTTP Server listening on {}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await.unwrap();
+}
+
+// Forward JSON-RPC requests over HTTP to the MCP handler
+async fn rpc_handler(
+    State(state): State<AppState>,
+    Json(req): Json<Request>,
+ ) -> Json<Response> {
+    match handle_mcp_request(req, state).await {
+        Some(resp) => Json(resp),
+        None => Json(Response::error(
+            serde_json::Value::Null,
+            error_codes::INVALID_REQUEST,
+            "Notifications are not supported over HTTP".into(),
+        )),
+    }
 }
 
 // --- MCP Server Logic ---
