@@ -2,6 +2,49 @@
 
 A Model Context Protocol (MCP) server providing tools to interact with Sei EVM and Cosmos networks. It exposes wallet management, balances, faucet, transactions, contract utilities, token (ERC20/721/1155) helpers, and observability via SeiStream.
 
+## Quickstart
+
+### 1) Installation (script)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/0xnvoid/sei-mcp/main/scripts/install.sh | GITHUB_REPO=0xnvoid/sei-mcp bash
+```
+
+Ensure your shell PATH includes `~/.local/bin` so `sei-mcp-server-rs` is discoverable:
+
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
+# or zsh
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
+```
+
+### 2) Configure your MCP client (copiable)
+
+Create or edit your `mcp.json` and add this entry:
+
+```json
+{
+  "mcpServers": {
+    "sei-mcp": {
+      "command": "sei-mcp-server-rs",
+      "args": ["--mcp"],
+      "env": {
+        "CHAIN_RPC_URLS": "{\"sei-evm-testnet\":\"https://evm-rpc-testnet.sei-apis.com\",\"atlantic-2\":\"https://rpc-testnet.sei-apis.com\",\"sei-evm-mainnet\":\"https://evm-rpc.sei-apis.com\",\"pacific-1\":\"https://sei-rpc.polkachu.com\"}",
+        "FAUCET_API_URL": "https://sei-mcp.onrender.com",
+        "DISCORD_API_URL": "https://sei-mcp-tdj3.onrender.com"
+      }
+    }
+  }
+}
+```
+
+Notes:
+
+- `CHAIN_RPC_URLS` is a JSON string map of `chain_id -> rpc_url`.
+- `FAUCET_API_URL` points to the optional faucet microservice in `faucet-api/`.
+- `DISCORD_API_URL` points to the optional Discord microservice (used by the `post_discord_message` tool). If unset, Discord-related tools will be unavailable.
+- You can also run locally without installing: set `command` to your built binary path and add `cwd` if needed.
+
 ## Repository Structure
 
 ```
@@ -98,7 +141,7 @@ This category contains miscellaneous helper tools.
 * **`discord_post_message`**: Sends a message to a pre-configured Discord channel via a webhook.
 * **`redirect_to_seidocs`**: Provides the URL for the official Sei documentation (`https://docs.sei.io/`).
 
-## Install
+## Additional Installation Options
 
 One-liner installer (adjust repo env if needed):
 
@@ -114,6 +157,35 @@ cargo build --release
 ```
 
 See `mcp-server/README.md` for detailed server usage and tool references.
+
+### Manual download and setup
+
+If you prefer downloading a specific release asset (without the script):
+
+```bash
+# Set the tag you want
+TAG=v0.1.0
+
+# Pick the correct artifact for your OS/arch
+# linux:   sei-mcp-server-rs-linux-x86_64.tar.gz   or   sei-mcp-server-rs-linux-arm64.tar.gz
+# macOS:   sei-mcp-server-rs-macos-x86_64.tar.gz   or   sei-mcp-server-rs-macos-arm64.tar.gz
+# windows: sei-mcp-server-rs-windows-x86_64.zip    or   sei-mcp-server-rs-windows-arm64.zip
+
+ART=sei-mcp-server-rs-linux-x86_64.tar.gz   # change to your OS/arch
+curl -fsSL -o "$ART" "https://github.com/0xnvoid/sei-mcp/releases/download/${TAG}/${ART}"
+
+# Extract and install (Linux/macOS)
+tar -xzf "$ART"
+install -m 0755 sei-mcp-server-rs "$HOME/.local/bin/sei-mcp-server-rs"
+
+# Ensure PATH contains ~/.local/bin
+case :$PATH: in
+  *:"$HOME/.local/bin":*) ;; 
+  *) echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc" ;;
+esac
+```
+
+Note: Configure required env (e.g. `CHAIN_RPC_URLS`) in your MCP client entry.
 
 ### Install via script (recommended)
 
@@ -215,6 +287,8 @@ Examples of tool calls (JSON-RPC-like payloads). Replace addresses and private k
   "params": {"name": "approve_token_spending", "arguments": {"private_key": "<hex>", "tokenAddress": "0x...", "spenderAddress": "0x...", "amount": "115792089237316195423570985008687907853269984665640564039457584007913129639935"}}
 }
 ```
+
+The large `amount` above is `2^256 - 1` (max uint256), a common pattern for "infinite approval" so you don’t need to re-approve each transfer. Consider the security trade‑off: if the spender is compromised, it can spend up to that limit. Prefer smaller, purpose‑scoped allowances when appropriate.
 
 - ERC721 tokenURI
 ```json

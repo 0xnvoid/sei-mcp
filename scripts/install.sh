@@ -1,23 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Install latest release of sei-mcp-server-rs into ~/.local/bin (default)
+# Install the latest release of sei-mcp-server-rs into ~/.local/bin
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/main/scripts/install.sh | bash
-# Or:
-#   GITHUB_REPO=<owner>/<repo> ./scripts/install.sh
-#   ./scripts/install.sh <owner>/<repo>
+#   curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/main/scripts/install.sh | GITHUB_REPO=<owner>/<repo> bash
+#   # or run locally: GITHUB_REPO=<owner>/<repo> ./scripts/install.sh
 
 BIN_NAME="sei-mcp-server-rs"
 INSTALL_DIR="${HOME}/.local/bin"
 REPO_SLUG="${GITHUB_REPO:-}"
 
 if [[ -z "${REPO_SLUG}" ]] && command -v git >/dev/null 2>&1; then
-  # Try to infer from current repo
+  # Try to infer owner/repo from current git remote
   if REMOTE_URL=$(git config --get remote.origin.url 2>/dev/null); then
-    # Handle formats like:
-    #  - https://github.com/owner/repo.git
-    #  - git@github.com:owner/repo.git
+    # Supports https and ssh remotes
     if [[ "$REMOTE_URL" =~ github.com[:/]+([^/]+)/([^/.]+) ]]; then
       REPO_SLUG="${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
     fi
@@ -33,22 +29,22 @@ if [[ -z "${REPO_SLUG}" ]]; then
   exit 1
 fi
 
-# Detect OS
+# Detect OS (matches release asset naming)
 OS="$(uname -s)"
 case "$OS" in
   Linux)   OS_SLUG=linux ; EXT=tar.gz ; ;;
   Darwin)  OS_SLUG=macos ; EXT=tar.gz ; ;;
   MINGW*|MSYS*|CYGWIN*) echo "Windows bash not supported by this script. Use PowerShell installer." >&2 ; exit 1 ;;
   *) echo "Unsupported OS: $OS" >&2 ; exit 1 ;;
- esac
+esac
 
-# Detect Arch
+# Detect architecture (matches release asset naming)
 ARCH_RAW="$(uname -m)"
 case "$ARCH_RAW" in
   x86_64|amd64) ARCH_SLUG=x86_64 ; ;;
   aarch64|arm64) ARCH_SLUG=arm64 ; ;;
   *) echo "Unsupported arch: $ARCH_RAW" >&2 ; exit 1 ;;
- esac
+esac
 
 ASSET_BASENAME="${BIN_NAME}-${OS_SLUG}-${ARCH_SLUG}.${EXT}"
 DOWNLOAD_URL="https://github.com/${REPO_SLUG}/releases/latest/download/${ASSET_BASENAME}"
@@ -70,7 +66,7 @@ case "$EXT" in
   tar.gz) tar -xzf "$TMP_DIR/asset" -C "$TMP_DIR/extract" ; ;;
   zip)    unzip -q "$TMP_DIR/asset" -d "$TMP_DIR/extract" ; ;;
   *) echo "Unknown archive type: $EXT" >&2 ; exit 1 ;;
- esac
+esac
 
 if [[ ! -f "$TMP_DIR/extract/${BIN_NAME}" ]]; then
   echo "ERROR: Binary ${BIN_NAME} not found in archive." >&2
@@ -81,15 +77,14 @@ fi
 mkdir -p "$INSTALL_DIR"
 install -m 0755 "$TMP_DIR/extract/${BIN_NAME}" "$INSTALL_DIR/${BIN_NAME}"
 
-if ! command -v "$INSTALL_DIR/${BIN_NAME}" >/dev/null 2>&1; then
-  echo "Installed to $INSTALL_DIR. Ensure it is on your PATH." >&2
+# Advise if INSTALL_DIR is not on PATH
+if ! command -v "${BIN_NAME}" >/dev/null 2>&1; then
+  echo "Installed to $INSTALL_DIR. Add it to your PATH to use 'sei-mcp-server-rs' directly." >&2
   echo "Example: export PATH=\"$INSTALL_DIR:\$PATH\"" >&2
 fi
 
-# Note: We do not execute the binary here because it may require environment
-# variables (e.g., CHAIN_RPC_URLS) at startup. Running it without those can
-# cause a confusing error during installation. Use your MCP client config to
-# set env and run the server.
+# Note: Not executing the binary here: it requires environment (e.g., CHAIN_RPC_URLS).
+# Use your MCP client config to set env and run the server.
 
 echo
 echo "Installed ${BIN_NAME} to ${INSTALL_DIR}."
