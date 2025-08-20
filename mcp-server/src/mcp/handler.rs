@@ -360,22 +360,70 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
         }
         "discord_post_message" => {
             let res: Result<Response, Response> = (async {
+                let base = state.config.discord_api_url.clone().ok_or_else(|| {
+                    Response::error(req_id.clone(), error_codes::INVALID_PARAMS, "DISCORD_API_URL is not configured on the server".into())
+                })?;
                 let message = utils::get_required_arg::<String>(args, "message", req_id)?;
                 let username = args.get("username").and_then(|v| v.as_str());
-                let res = crate::api::discord::post_discord_message(&state, &message, username)
+                let url = format!("{}/discord/post", base.trim_end_matches('/'));
+                let client = Client::new();
+                let payload = json!({ "message": message, "username": username });
+                let resp = client.post(url)
+                    .json(&payload)
+                    .send()
                     .await
                     .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
-                let summary = if let Some(u) = username {
-                    format!("Posted to Discord as '{}'", u)
-                } else {
-                    "Posted to Discord".to_string()
-                };
-                Ok(Response::success(
-                    req_id.clone(),
-                    make_texty_result(summary, res),
-                ))
-            })
-            .await;
+                let status = resp.status();
+                let body: Value = resp.json().await.unwrap_or_else(|_| json!({"ok": status.is_success()}));
+                if !status.is_success() {
+                    return Err(Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, format!("discord-api error {}: {}", status, body)));
+                }
+                let summary = if let Some(u) = username { format!("Posted to Discord as '{}'", u) } else { "Posted to Discord".to_string() };
+                Ok(Response::success(req_id.clone(), make_texty_result(summary, body)))
+            }).await;
+            res.unwrap_or_else(|err_resp| err_resp)
+        }
+        "get_discord_service_info" => {
+            let res: Result<Response, Response> = (async {
+                let base = state.config.discord_api_url.clone().ok_or_else(|| {
+                    Response::error(req_id.clone(), error_codes::INVALID_PARAMS, "DISCORD_API_URL is not configured on the server".into())
+                })?;
+                let url = format!("{}/", base.trim_end_matches('/'));
+                let client = Client::new();
+                let resp = client.get(url)
+                    .send().await
+                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
+                let status = resp.status();
+                let body: Value = resp.json().await.unwrap_or_else(|_| json!({"ok": status.is_success()}));
+                if !status.is_success() {
+                    return Err(Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, format!("discord-api error {}: {}", status, body)));
+                }
+                let has = body.get("hasWebhook").and_then(|v| v.as_bool()).unwrap_or(false);
+                let summary = format!("Discord service {} (webhook configured: {})", if status.is_success(){"reachable"} else {"unreachable"}, has);
+                Ok(Response::success(req_id.clone(), make_texty_result(summary, body)))
+            }).await;
+            res.unwrap_or_else(|err_resp| err_resp)
+        }
+        "check_discord_health" => {
+            let res: Result<Response, Response> = (async {
+                let base = state.config.discord_api_url.clone().ok_or_else(|| {
+                    Response::error(req_id.clone(), error_codes::INVALID_PARAMS, "DISCORD_API_URL is not configured on the server".into())
+                })?;
+                let url = format!("{}/health", base.trim_end_matches('/'));
+                let client = Client::new();
+                let resp = client.get(url)
+                    .send().await
+                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
+                let status = resp.status();
+                let body: Value = resp.json().await.unwrap_or_else(|_| json!({"ok": status.is_success()}));
+                if !status.is_success() {
+                    return Err(Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, format!("discord-api error {}: {}", status, body)));
+                }
+                let port = body.get("port").and_then(|v| v.as_u64()).unwrap_or(0);
+                let uptime = body.get("uptimeSecs").and_then(|v| v.as_u64()).unwrap_or(0);
+                let summary = format!("Discord health OK on port {} (uptime {}s)", port, uptime);
+                Ok(Response::success(req_id.clone(), make_texty_result(summary, body)))
+            }).await;
             res.unwrap_or_else(|err_resp| err_resp)
         }
         "get_balance" => {
@@ -1736,6 +1784,16 @@ fn handle_tools_list(req: &Request) -> Response {
                 "required": ["message"],
                 "additionalProperties": false
             }
+        },
+        {
+            "name": "get_discord_service_info",
+            "description": "Fetch basic info from the external discord-api root endpoint (requires DISCORD_API_URL).",
+            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        },
+        {
+            "name": "check_discord_health",
+            "description": "Check health of the external discord-api (requires DISCORD_API_URL).",
+            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
         },
         {
             "name": "get_contract_transactions",

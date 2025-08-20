@@ -11,6 +11,8 @@ pub struct Config {
     pub chain_rpc_urls: HashMap<String, String>,
     pub websocket_url: String,
     pub faucet_api_url: String,
+    // Optional external Discord API base URL (mirrors faucet_api_url pattern)
+    pub discord_api_url: Option<String>,
     // Kept for non-faucet tx paths
     pub tx_private_key_evm: String,
     pub default_sender_address: Option<String>,
@@ -45,6 +47,8 @@ impl Config {
             chain_rpc_urls,
             websocket_url: env::var("WEBSOCKET_URL").unwrap_or_else(|_| "".to_string()),
             faucet_api_url: env::var("FAUCET_API_URL").context("FAUCET_API_URL must be set to the faucet HTTP base URL, e.g. https://your-faucet.onrender.com")?,
+            // External Discord API base URL is optional; when set, server will proxy discord_post_message to it
+            discord_api_url: env::var("DISCORD_API_URL").ok(),
             // Neutral names with backward-compatible fallbacks
             tx_private_key_evm: env::var("TX_PRIVATE_KEY_EVM")
                 .or_else(|_| env::var("FAUCET_PRIVATE_KEY_EVM"))

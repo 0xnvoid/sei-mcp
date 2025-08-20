@@ -1,3 +1,4 @@
+#![recursion_limit = "256"]
 // src/lib.rs
 
 use std::sync::Arc;

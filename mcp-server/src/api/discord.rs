@@ -3,6 +3,7 @@
 use axum::{extract::State, http::StatusCode, Json};
 use serde::Deserialize;
 use serde_json::Value;
+use reqwest::Client;
 
 use crate::AppState;
 
@@ -19,7 +20,25 @@ pub async fn post_discord_message(
     content: &str,
     username: Option<&str>,
 ) -> anyhow::Result<Value> {
-    // Delegate to unified service implementation
+    // If external discord-api is configured, proxy to it (mirrors faucet proxying model)
+    if let Some(base) = &state.config.discord_api_url {
+        let url = format!("{}/discord/post", base.trim_end_matches('/'));
+        let client = Client::new();
+        let resp = client
+            .post(url)
+            .json(&serde_json::json!({ "message": content, "username": username }))
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            anyhow::bail!("discord-api proxy error: {} - {}", status, text);
+        }
+        let v: Value = resp.json().await.unwrap_or_else(|_| serde_json::json!({"ok": true}));
+        return Ok(v);
+    }
+
+    // Otherwise delegate to unified service implementation (webhook/bot)
     let res = crate::blockchain::services::discord::send_message(state, content, username).await?;
     Ok(res)
 }
