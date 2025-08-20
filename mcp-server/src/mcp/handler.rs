@@ -128,9 +128,20 @@ pub async fn handle_mcp_request(req: Request, state: AppState) -> Option<Respons
         "tools/call" => handle_tool_call(req, state).await,
         // Convenience aliases to support direct method calls from CLI
         // They are rewritten into tools/call internally to reuse the same logic
-        "get_balance" | "request_faucet" | "transfer_evm" | "transfer_sei" | "transfer_nft_evm"
-        | "search_events" | "get_contract" | "get_contract_code" | "get_contract_transactions"
-        | "redirect_to_seidocs" | "get_chain_info" | "get_transaction_info" | "get_transaction_history" | "get_nft_metadata" => {
+        "get_balance"
+        | "request_faucet"
+        | "transfer_evm"
+        | "transfer_sei"
+        | "transfer_nft_evm"
+        | "search_events"
+        | "get_contract"
+        | "get_contract_code"
+        | "get_contract_transactions"
+        | "redirect_to_seidocs"
+        | "get_chain_info"
+        | "get_transaction_info"
+        | "get_transaction_history"
+        | "get_nft_metadata" => {
             let name = req.method.clone();
             let wrapped = Request {
                 jsonrpc: req.jsonrpc.clone(),
@@ -439,8 +450,27 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                 };
                 let wallet = crate::blockchain::services::wallet::create_wallet_for_network(ct)
                     .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
-                let summary = format!("Created {} wallet {}", match ct { ChainType::Native => "native", ChainType::Evm => "evm" }, wallet.address);
-                Ok(Response::success(req_id.clone(), make_texty_result(summary, json!(wallet))))
+                
+                // Create a comprehensive response with all wallet details
+                let comprehensive_wallet = json!({
+                    "address": wallet.address,
+                    "private_key": wallet.private_key,
+                    "mnemonic": wallet.mnemonic,
+                    "chain_type": match ct { ChainType::Native => "native", ChainType::Evm => "evm" },
+                });
+                
+                let mnemonic_text = wallet.mnemonic.as_ref()
+                    .map(|m| format!("\nMnemonic: {}", m))
+                    .unwrap_or_else(|| "\nMnemonic: Not available".to_string());
+                
+                let summary = format!(
+                    "Created {} wallet with complete details:\nAddress: {}\nPrivate Key: {}{}",
+                    match ct { ChainType::Native => "native", ChainType::Evm => "evm" },
+                    wallet.address,
+                    wallet.private_key,
+                    mnemonic_text
+                );
+                Ok(Response::success(req_id.clone(), make_texty_result(summary, comprehensive_wallet)))
             }).await;
             res.unwrap_or_else(|err_resp| err_resp)
         },
@@ -455,10 +485,29 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                 let ct = match chain_type { "native" => ChainType::Native, _ => ChainType::Evm };
                 let wallet = crate::blockchain::services::wallet::import_wallet_for_network(ct, &key)
                     .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
-                let summary = format!("Imported wallet {}", wallet.address);
+                
+                // Create a comprehensive response with all wallet details
+                let comprehensive_wallet = json!({
+                    "address": wallet.address,
+                    "private_key": wallet.private_key,
+                    "mnemonic": wallet.mnemonic,
+                    "chain_type": match ct { ChainType::Native => "native", ChainType::Evm => "evm" },
+                });
+                
+                let mnemonic_text = wallet.mnemonic.as_ref()
+                    .map(|m| format!("\nMnemonic: {}", m))
+                    .unwrap_or_else(|| "\nMnemonic: Not available".to_string());
+                
+                let summary = format!(
+                    "Imported {} wallet with complete details:\nAddress: {}\nPrivate Key: {}{}",
+                    match ct { ChainType::Native => "native", ChainType::Evm => "evm" },
+                    wallet.address,
+                    wallet.private_key,
+                    mnemonic_text
+                );
                 Ok(Response::success(
                     req_id.clone(),
-                    make_texty_result(summary, json!(wallet)),
+                    make_texty_result(summary, comprehensive_wallet),
                 ))
             })
             .await;
@@ -1639,7 +1688,7 @@ fn handle_tools_list(req: &Request) -> Response {
                 "additionalProperties": false
             }
         },
-        { 
+        {
             "name": "get_contract_transactions",
             "description": "Get the transactions of a smart contract.",
             "inputSchema": {
