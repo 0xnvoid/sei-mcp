@@ -7,6 +7,14 @@ on:
   push:
     tags:
       - "v*"
+  release:
+    types: [created, published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build (e.g., v0.1.2)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -27,6 +35,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # On release events use the tag_name; else use github.ref (tag push)
+          ref: ${{ inputs.tag || github.event.release.tag_name || github.ref }}
 
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable

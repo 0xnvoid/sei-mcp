@@ -1,4 +1,4 @@
-# sei-mcp-server-rs
+# Sei MCP Server (binary: `seiyn_mcp`)
 
 Rust-based HTTP + MCP server for interacting with Sei (Cosmos/EVM) networks. It exposes:
 
@@ -131,7 +131,7 @@ curl -X POST http://127.0.0.1:8080/rpc \
 {
   "mcpServers": {
     "sei-mcp-release": {
-      "command": "PATH_TO_REPO/sei-mcp/mcp-server/target/release/sei-mcp-server-rs",
+      "command": "PATH_TO_REPO/sei-mcp/mcp-server/target/release/seiyn_mcp",
       "args": ["--mcp"],
       "env": {
         "CHAIN_RPC_URLS": "{...}",

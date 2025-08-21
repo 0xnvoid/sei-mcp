@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "sei-mcp-release": {
-      "command": "PATH_TO_REPO/sei-mcp/mcp-server/target/release/sei-mcp-server-rs",
+      "command": "PATH_TO_REPO/sei-mcp/mcp-server/target/release/seiyn_mcp",
       "args": [
         "--mcp"
       ],

@@ -1566,8 +1566,8 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
 /// Handles the 'initialize' request.
 fn handle_initialize(req: &Request) -> Response {
     let server_info = json!({
-        "name": "sei-mcp-server-rs",
-        "version": "0.2.0-fixed"
+        "name": "seiyn_mcp",
+        "version": "0.1.0"
     });
     let capabilities = json!({ "tools": { "listChanged": false } });
     let instructions =

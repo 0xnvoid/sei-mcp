@@ -9,7 +9,7 @@ echo "🚀 Starting MCP Server Test..."
 # 1. Start the MCP server in the background
 # Ensure the project is built in release mode first
 cargo build --release
-./target/release/sei-mcp-server-rs --mcp &
+./target/release/seiyn_mcp --mcp &
 SERVER_PID=$!
 
 # Give the server a moment to start up
@@ -40,7 +40,7 @@ kill %1
 echo "🔍 Analyzing server responses..."
 
 # 5. Check the initialize response
-if grep -q '"name":"sei-mcp-server-rs"' "$OUTPUT_FILE"; then
+if grep -q '"name":"seiyn_mcp"' "$OUTPUT_FILE"; then
     echo "✅ Test Passed: 'initialize' method returned correct server info."
 else
     echo "❌ Test Failed: Did not receive a valid 'initialize' response."

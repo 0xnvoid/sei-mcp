@@ -7,10 +7,10 @@ A Model Context Protocol (MCP) server providing tools to interact with Sei EVM a
 ### 1) Installation (script)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/0xnvoid/sei-mcp/main/scripts/install.sh | GITHUB_REPO=0xnvoid/sei-mcp bash
+curl -fsSL https://raw.githubusercontent.com/0xnvoid/seiyn-mcp/main/scripts/install.sh | GITHUB_REPO=0xnvoid/seiyn-mcp bash
 ```
 
-Ensure your shell PATH includes `~/.local/bin` so `sei-mcp-server-rs` is discoverable:
+Ensure your shell PATH includes `~/.local/bin` so `seiyn_mcp` is discoverable:
 
 ```bash
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
@@ -26,7 +26,7 @@ Create or edit your `mcp.json` and add this entry:
 {
   "mcpServers": {
     "sei-mcp": {
-      "command": "sei-mcp-server-rs",
+      "command": "seiyn_mcp",
       "args": ["--mcp"],
       "env": {
         "CHAIN_RPC_URLS": "{\"sei-evm-testnet\":\"https://evm-rpc-testnet.sei-apis.com\",\"atlantic-2\":\"https://rpc-testnet.sei-apis.com\",\"sei-evm-mainnet\":\"https://evm-rpc.sei-apis.com\",\"pacific-1\":\"https://sei-rpc.polkachu.com\"}",
@@ -146,7 +146,7 @@ This category contains miscellaneous helper tools.
 One-liner installer (adjust repo env if needed):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/0xnvoid/sei-mcp/main/scripts/install.sh | GITHUB_REPO=0xnvoid/sei-mcp bash
+curl -fsSL https://raw.githubusercontent.com/0xnvoid/seiyn-mcp/main/scripts/install.sh | GITHUB_REPO=0xnvoid/seiyn-mcp bash
 ```
 
 Or build locally:
@@ -167,16 +167,16 @@ If you prefer downloading a specific release asset (without the script):
 TAG=v0.1.0
 
 # Pick the correct artifact for your OS/arch
-# linux:   sei-mcp-server-rs-linux-x86_64.tar.gz   or   sei-mcp-server-rs-linux-arm64.tar.gz
-# macOS:   sei-mcp-server-rs-macos-x86_64.tar.gz   or   sei-mcp-server-rs-macos-arm64.tar.gz
-# windows: sei-mcp-server-rs-windows-x86_64.zip    or   sei-mcp-server-rs-windows-arm64.zip
+# linux:   seiyn_mcp-linux-x86_64.tar.gz   or   seiyn_mcp-linux-arm64.tar.gz
+# macOS:   seiyn_mcp-macos-x86_64.tar.gz   or   seiyn_mcp-macos-arm64.tar.gz
+# windows: seiyn_mcp-windows-x86_64.zip    or   seiyn_mcp-windows-arm64.zip
 
-ART=sei-mcp-server-rs-linux-x86_64.tar.gz   # change to your OS/arch
-curl -fsSL -o "$ART" "https://github.com/0xnvoid/sei-mcp/releases/download/${TAG}/${ART}"
+ART=seiyn_mcp-linux-x86_64.tar.gz   # change to your OS/arch
+curl -fsSL -o "$ART" "https://github.com/0xnvoid/seiyn-mcp/releases/download/${TAG}/${ART}"
 
 # Extract and install (Linux/macOS)
 tar -xzf "$ART"
-install -m 0755 sei-mcp-server-rs "$HOME/.local/bin/sei-mcp-server-rs"
+install -m 0755 seiyn_mcp "$HOME/.local/bin/seiyn_mcp"
 
 # Ensure PATH contains ~/.local/bin
 case :$PATH: in
@@ -192,7 +192,7 @@ Note: Configure required env (e.g. `CHAIN_RPC_URLS`) in your MCP client entry.
 The script downloads the latest release and installs the binary to `~/.local/bin`.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/0xnvoid/sei-mcp/main/scripts/install.sh | GITHUB_REPO=0xnvoid/sei-mcp bash
+curl -fsSL https://raw.githubusercontent.com/0xnvoid/seiyn-mcp/main/scripts/install.sh | GITHUB_REPO=0xnvoid/seiyn-mcp bash
 ```
 
 Ensure your shell PATH includes `~/.local/bin`:
@@ -203,14 +203,14 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
 ```
 
-After install, use the binary name `sei-mcp-server-rs` in your MCP config (no absolute path needed if PATH is set).
+After install, use the binary name `seiyn_mcp` in your MCP config (no absolute path needed if PATH is set).
 
 ## Uninstall
 
 To remove the MCP server installed via the script/manual steps, delete the binary:
 
 ```bash
-rm -f "$HOME/.local/bin/sei-mcp-server-rs"
+rm -f "$HOME/.local/bin/seiyn_mcp"
 ```
 
 If you added an entry in your MCP client config (e.g., `mcp.json`), you may also remove the `sei-mcp` entry there.
@@ -370,7 +370,7 @@ If you use an MCP-capable client, add an entry. After installing with the script
 {
   "mcpServers": {
     "sei-mcp": {
-      "command": "sei-mcp-server-rs",
+      "command": "seiyn_mcp",
       "args": ["--mcp"],
       "cwd": "/path/to/mcp-server", 
       "env": {

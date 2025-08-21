@@ -61,7 +61,7 @@ Point the MCP server to this service by setting `FAUCET_API_URL` in its environm
 {
   "mcpServers": {
     "sei-mcp": {
-      "command": "/path/to/mcp-server/target/release/sei-mcp-server-rs",
+      "command": "/path/to/mcp-server/target/release/seiyn_mcp",
       "args": ["--mcp"],
       "cwd": "/path/to/mcp-server",
       "env": {
