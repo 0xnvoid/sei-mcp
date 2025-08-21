@@ -205,6 +205,16 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
 
 After install, use the binary name `sei-mcp-server-rs` in your MCP config (no absolute path needed if PATH is set).
 
+## Uninstall
+
+To remove the MCP server installed via the script/manual steps, delete the binary:
+
+```bash
+rm -f "$HOME/.local/bin/sei-mcp-server-rs"
+```
+
+If you added an entry in your MCP client config (e.g., `mcp.json`), you may also remove the `sei-mcp` entry there.
+
 ## Configuration
 
 Set chain RPC URLs in config (the server already loads from its internal config). Supported `chain_id` examples:
