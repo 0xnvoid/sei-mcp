@@ -1,7 +1,7 @@
 name: release
 # Creates a GitHub Release on tag push (v*) and uploads OS/arch-specific archives
 # Asset naming must match scripts/install.sh expectations:
-#   sei-mcp-server-rs-{linux|macos|windows}-{x86_64|arm64}.{tar.gz|zip}
+#   seiyn_mcp-{linux|macos|windows}-{x86_64|arm64}.{tar.gz|zip}
 
 on:
   push:
@@ -38,7 +38,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          BIN_NAME=sei-mcp-server-rs
+          BIN_NAME=seiyn_mcp
           OS="${{ runner.os }}"
           case "$OS" in
             Linux)  OS_SLUG=linux ; EXT="" ; ;;

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Install the latest release of sei-mcp-server-rs into ~/.local/bin
+# Install the latest release of seiyn_mcp into ~/.local/bin
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/main/scripts/install.sh | GITHUB_REPO=<owner>/<repo> bash
 #   # or run locally: GITHUB_REPO=<owner>/<repo> ./scripts/install.sh
 
-BIN_NAME="sei-mcp-server-rs"
+BIN_NAME="seiyn_mcp"
 INSTALL_DIR="${HOME}/.local/bin"
 REPO_SLUG="${GITHUB_REPO:-}"
 
@@ -79,7 +79,7 @@ install -m 0755 "$TMP_DIR/extract/${BIN_NAME}" "$INSTALL_DIR/${BIN_NAME}"
 
 # Advise if INSTALL_DIR is not on PATH
 if ! command -v "${BIN_NAME}" >/dev/null 2>&1; then
-  echo "Installed to $INSTALL_DIR. Add it to your PATH to use 'sei-mcp-server-rs' directly." >&2
+  echo "Installed to $INSTALL_DIR. Add it to your PATH to use 'seiyn_mcp' directly." >&2
   echo "Example: export PATH=\"$INSTALL_DIR:\$PATH\"" >&2
 fi
 
@@ -88,4 +88,4 @@ fi
 
 echo
 echo "Installed ${BIN_NAME} to ${INSTALL_DIR}."
-echo "You can now reference 'sei-mcp-server-rs' in your MCP config."
+echo "You can now reference 'seiyn_mcp' in your MCP config."

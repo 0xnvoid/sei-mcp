@@ -71,3 +71,7 @@ prost = "0.12"
 
 [dev-dependencies]
 tempfile = "3.8"
+
+[[bin]]
+name = "seiyn_mcp"
+path = "src/main.rs"
