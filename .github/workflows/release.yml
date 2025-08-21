@@ -79,10 +79,18 @@ jobs:
             tar -czf "$ART" "${BIN_NAME}"
           fi
 
+      - name: List packaged files
+        shell: bash
+        run: |
+          echo "Workspace: $GITHUB_WORKSPACE"
+          ls -l
+          echo "Contents of mcp-server/dist:" && ls -l mcp-server/dist || true
+
       - name: Create GitHub Release and Upload Assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            mcp-server/dist/*  # path is from repo root; build runs in mcp-server/
+            mcp-server/dist/**
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
